@@ -16,7 +16,7 @@ const views = {
   rentabilidad: ['Los resultados, en perspectiva.', 'Relaciona la utilidad con los recursos que la hicieron posible.']
 };
 function navigate() {
-  const key = location.hash.slice(1) in views ? location.hash.slice(1) : 'salud';
+  const key = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'salud';
   document.querySelectorAll('.module').forEach(section => section.hidden = section.id !== key);
   document.querySelectorAll('.nav a').forEach(link => { const active = link.hash === `#${key}`; link.classList.toggle('active', active); if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
   $('#page-title').textContent = views[key][0]; $('#page-description').textContent = views[key][1];
@@ -42,6 +42,7 @@ $('#health-form').addEventListener('submit', event => {
   if (!count) advice.push('Contrasta esta evaluación con las razones financieras y el flujo de caja.', 'Antes de evaluar un préstamo, compara su costo con el rendimiento esperado y verifica la capacidad de pago.');
   $('#health-result').innerHTML = `<p class="eyebrow">TU DIAGNÓSTICO</p><div><span class="status ${count === 0 ? 'good' : critical ? 'danger' : 'caution'}">${count} de 4 señales de riesgo</span></div><h2 class="diagnosis-heading">${title}</h2><p class="diagnosis-intro">${critical ? 'En este escenario, conviene resolver las presiones de caja o deuda antes de considerar mayor apalancamiento.' : count ? 'La acumulación de inventario puede inmovilizar efectivo. Revisa su rotación antes de ampliar el financiamiento.' : 'Las respuestas no muestran las señales de riesgo evaluadas. Es un punto de partida para estudiar la viabilidad de financiamiento.'}</p><ul class="advice">${advice.map(a => `<li>${a}</li>`).join('')}</ul><p class="score-note">Árbol didáctico: problemas de pagos, caja o deuda tienen prioridad; después se evalúa el inventario. Este cuestionario no determina por sí solo la capacidad de endeudamiento.</p>`;
   healthGenerated = true;
+  document.dispatchEvent(new CustomEvent('health:calculated'));
 });
 const accounts = [
   { key: 'cash', label: 'Efectivo y bancos', group: 'ACTIVOS' },
@@ -82,6 +83,7 @@ $('#analysis-form').addEventListener('submit', event => {
   const payablesChange = horizontal(...values[4]);
   $('#analysis-result').innerHTML = `<div class="panel analysis-output"><p class="eyebrow">RESULTADO / ${y} → ${y + 1}</p><h2>Estructura y variación del balance</h2><div class="table-scroll"><table><thead><tr><th scope="col">Cuenta</th><th scope="col">${y}</th><th scope="col">${y + 1}</th><th scope="col">Vertical ${y}</th><th scope="col">Vertical ${y + 1}</th><th scope="col">Δ absoluto</th><th scope="col">Δ horizontal</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>${payablesChange !== null && payablesChange >= 30 ? `<div class="warning">Las cuentas por pagar crecieron ${pct(payablesChange)}. Revisa los plazos con proveedores y el efectivo disponible; el crecimiento por sí solo no demuestra un problema de liquidez.</div>` : ''}<details class="method"><summary>Cómo leer estos resultados</summary><p>Vertical = cuenta ÷ activos totales del mismo año × 100. En pasivos y patrimonio la base equivalente es el total de pasivos + patrimonio. Horizontal = (año siguiente − año inicial) ÷ año inicial × 100. Δ absoluto = año siguiente − año inicial.</p><p>¹ N/C: no se calcula la variación porcentual cuando la base es cero o negativa; se conserva la diferencia absoluta. El rojo marca crecimientos de pasivos ≥ 30 % como señal didáctica de revisión. Aumentar o disminuir una cuenta no es necesariamente favorable o desfavorable.</p></details></div>`;
   analysisGenerated = true;
+  document.dispatchEvent(new CustomEvent('analysis:calculated', { detail: { values, assets, funding, year: y } }));
 });
 $('#example-analysis').addEventListener('click', () => {
   const example = [[20000,25000],[25000,30000],[30000,35000],[75000,80000],[25000,40000],[50000,45000],[75000,85000]];
@@ -102,6 +104,7 @@ $('#profit-form').addEventListener('submit', event => {
   ];
   $('#profit-result').innerHTML = `<p class="eyebrow">RENDIMIENTO DEL PERÍODO</p>${metrics.map(m => { const [type,label] = classify(m.value,m.healthy); return `<div class="metric"><h3>${m.label}</h3><div class="metric-top"><strong class="metric-value">${pct(m.value)}</strong><span class="status ${type}">${label}</span></div><p>${m.value < 0 ? 'La empresa registra pérdidas en este período. ' : ''}${m.advice[type === 'danger' ? 0 : type === 'caution' ? 1 : 2]}</p></div>`; }).join('')}<p class="score-note">Interpretación con umbrales didácticos. Consulta las fórmulas y los criterios debajo.</p>`;
   profitGenerated = true;
+  document.dispatchEvent(new CustomEvent('profit:calculated', { detail: { profit, sales, assets, equity } }));
 });
 $('#example-profit').addEventListener('click', () => { Object.entries({profit:15000,sales:200000,assets:150000,equity:75000}).forEach(([key,value]) => $('#profit-form').elements.namedItem(key).value = value); $('#profit-form').requestSubmit(); });
 

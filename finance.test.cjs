@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const {dupont,simulate}=require('./dist/finance.js');
+const close=(a,b)=>assert.ok(Math.abs(a-b)<1e-8,`${a} != ${b}`);
+const base={sales:200000,profit:15000,cash:25000,receivables:30000,inventory:35000,fixed:80000,payables:40000,otherCurrent:15000,longDebt:30000};
+const d=dupont({profit:15000,sales:200000,assets:150000,equity:75000});
+close(d.margin,.075);close(d.turnover,4/3);close(d.leverage,2);close(d.roe,.2);
+close(dupont({profit:-15000,sales:200000,assets:150000,equity:75000}).roe,-.2);
+assert.throws(()=>dupont({profit:10,sales:0,assets:100,equity:50}));
+assert.throws(()=>dupont({profit:10,sales:100,assets:100,equity:0}));
+const unchanged=simulate(base);assert.deepEqual(unchanged.base,unchanged.scenario);
+const adjusted=simulate(base,15,10);
+close(adjusted.scenario.profit,17250);close(adjusted.scenario.sales,230000);
+close(adjusted.payment,4000);close(adjusted.scenario.cash,23250);
+close(adjusted.scenario.assets,168250);close(adjusted.scenario.equity,87250);
+close(adjusted.scenario.currentLiabilities,51000);close(adjusted.scenario.liquidity,88250/51000);
+close(adjusted.scenario.assets,adjusted.scenario.currentLiabilities+base.longDebt+adjusted.scenario.equity);
+close(adjusted.scenario.roa,17250/168250);close(adjusted.scenario.roe,17250/87250);
+assert.throws(()=>simulate(base,0,100),/efectivo/);
+assert.throws(()=>simulate({...base,otherCurrent:200000}),/patrimonio/);
+assert.throws(()=>simulate(base,51,0));assert.throws(()=>simulate(base,0,-1));
+assert.throws(()=>simulate({...base,sales:NaN}));
+const noDebt=simulate({...base,payables:0,otherCurrent:0,longDebt:0});assert.equal(noDebt.scenario.liquidity,null);
+const losses=simulate({...base,profit:-10000},15,0);close(losses.scenario.profit,-11500);close(losses.scenario.cash,23500);
+for(let growth=-50;growth<=50;growth+=10)for(let payment=0;payment<=40;payment+=10){const s=simulate(base,growth,payment);close(s.scenario.assets,s.scenario.currentLiabilities+base.longDebt+s.scenario.equity);close(s.scenario.profit/s.scenario.sales,base.profit/base.sales);}
+console.log('Pruebas aprobadas: Du Pont, pérdidas, escenario 15%/10%, conservación del balance, liquidez y errores de dominio.');
