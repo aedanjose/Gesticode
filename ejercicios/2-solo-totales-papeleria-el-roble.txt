@@ -1,0 +1,5 @@
+Papelería El Roble — ejercicio de liquidez
+Al 31 de diciembre de 2025 (en córdobas)
+Activos corrientes	1,400,000
+Inventarios	560,000
+Pasivos corrientes	700,000

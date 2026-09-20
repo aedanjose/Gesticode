@@ -1,0 +1,251 @@
+/* GestiCode · sistema visual «libro contable».
+   Papel de libro mayor con renglones azules y raya roja de margen, tapa verde con filete dorado,
+   pestañas de índice, sellos de estado y cifras en monoespaciada con totales de doble subrayado. */
+:root{
+  --paper:#fbf7ea;--paper-2:#f3edd8;--card:#fffdf5;
+  --ink:#13233f;--ink-2:#2c3e63;--muted:#5d6a80;
+  --line:#c9d7e6;--line-strong:#93a9c3;
+  --margin:#c2453a;
+  --cover:#17392c;--cover-2:#204a39;--cover-3:#2b5d48;--gold:#d8ad50;
+  --green:#1f6b47;--red:#b23a2e;--yellow:#946313;
+  --orange:#b23a2e;--linen:#17392c;--shadow:0 0 0 #0000;
+  --slab:'Zilla Slab',Georgia,serif;--sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+  font-family:var(--sans);color:var(--ink);
+}
+body{background:var(--cover);background-image:repeating-linear-gradient(45deg,#ffffff06 0 2px,transparent 2px 6px)}
+
+/* ── Tapa: barra superior y pestañas de índice ─────────────────────────────── */
+.topbar{background:var(--cover);border-bottom:0;height:88px;position:relative;color:#e6efe6}
+.topbar::after{content:'';position:absolute;left:0;right:0;bottom:0;height:7px;border-top:1px solid var(--gold);border-bottom:1px solid var(--gold);opacity:.85}
+.brand{color:var(--gold);font-family:var(--slab);font-weight:700;font-size:27px;letter-spacing:.01em;gap:14px}
+.brand-mark{background:transparent;border:2px solid var(--gold);border-radius:3px;color:var(--gold);font:700 25px var(--slab);width:40px;height:40px;box-shadow:inset 0 0 0 3px var(--cover),inset 0 0 0 4px #d8ad5066}
+.brand-sub{color:#a9c8b5;font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;margin-left:6px}
+.academic{color:#a9c8b5;font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.topbar .primary{background:var(--gold);color:var(--cover);border-color:var(--gold);box-shadow:3px 3px 0 #0006}
+.topbar .primary:hover{background:#e6bd62}
+.nav{background:var(--cover);border-bottom:0;padding-top:14px;gap:5px;align-items:flex-end}
+.nav a{padding:11px 20px 10px;background:var(--cover-2);color:#c9dfd0;border:1px solid var(--cover-3);border-bottom:0;border-radius:10px 10px 0 0;font:500 13px var(--sans);position:relative;top:1px;letter-spacing:.01em}
+.nav a:hover{background:var(--cover-3);color:#fff}
+.nav a.active{background:var(--paper);color:var(--ink);border-color:var(--paper);font-weight:600;padding-bottom:12px;top:0}
+.nav a.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--paper)}
+
+/* ── Hoja: papel rayado con doble raya roja de margen ─────────────────────── */
+main{background-color:var(--paper);
+  background-image:
+    linear-gradient(to right,transparent 0 30px,var(--margin) 30px 31px,transparent 31px 35px,var(--margin) 35px 36px,transparent 36px),
+    repeating-linear-gradient(to bottom,transparent 0 31px,var(--line) 31px 32px);
+  background-position:0 0,0 22px;box-shadow:0 0 0 1px #0003,0 24px 60px #0006;
+  padding:32px 32px 0 68px;margin-bottom:0;min-height:calc(100vh - 140px)}
+h1,h2{font-family:var(--slab);font-weight:600;letter-spacing:-.012em;line-height:1.15}
+h1{font-size:clamp(32px,3.4vw,44px)}
+h2{font-size:26px}
+h3{font-family:var(--slab);font-weight:600;font-size:17px}
+.eyebrow{font:600 11px var(--mono);letter-spacing:.15em;color:var(--margin);text-transform:uppercase}
+.eyebrow::before{content:'§ ';letter-spacing:0}
+.subtitle,.muted{color:var(--muted)}
+
+/* ── Controles ─────────────────────────────────────────────────────────────── */
+input,select{background:#fffdf7cc;border:0;border-bottom:1.5px solid var(--ink-2);border-radius:2px 2px 0 0;padding:9px 10px;min-height:42px;color:var(--ink)}
+input[type=number]{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums slashed-zero}
+input::placeholder{color:#8a97ab}
+input:focus,select:focus{outline:0;background:#fff7cf;border-bottom-color:var(--margin);box-shadow:0 2px 0 var(--margin)}
+input[type=range]{background:none;box-shadow:none;accent-color:var(--cover-3)}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--margin);outline-offset:3px}
+.primary,.secondary{border-radius:3px;font:600 13px var(--sans);letter-spacing:.02em;padding:10px 20px;min-height:42px;border:1.5px solid var(--ink);transition:transform .08s,box-shadow .08s}
+.primary{background:var(--ink);color:var(--paper);box-shadow:3px 3px 0 var(--margin)}
+.primary:hover{background:var(--ink-2);transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--margin)}
+.primary:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--margin)}
+.secondary{background:var(--card);color:var(--ink);border-color:var(--ink-2)}
+.secondary:hover{background:var(--paper-2)}
+.icon-button{border-radius:3px;border:1.5px solid var(--ink-2);background:var(--card);color:var(--ink)}
+.icon-button:hover{background:#f6dcd6;border-color:var(--margin);color:var(--margin)}
+
+/* ── Cabecera de página y datos del caso ───────────────────────────────────── */
+.case-toolbar label{font:600 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.case-toolbar input,.case-toolbar select{font-family:var(--sans);text-align:left;font-size:15px}
+.case-status{font:400 12px var(--mono);color:var(--muted)}
+.example-menu summary{font:600 13px var(--sans);color:var(--ink-2)}
+.example-menu>div{background:var(--card);border:1.5px solid var(--ink);border-radius:3px;box-shadow:4px 4px 0 #13233f22}
+.example-menu button{background:transparent;border-radius:2px}
+.example-menu button:hover{background:var(--paper-2)}
+.period-badge{border:3px double var(--ink-2);padding:9px 16px 8px;border-radius:3px;background:var(--card);text-align:center;transform:rotate(-1deg)}
+.period-badge span{font:600 10px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.period-badge strong{font:600 22px var(--mono);font-variant-numeric:tabular-nums slashed-zero;color:var(--ink)}
+
+/* ── Hojas (paneles) y fichas ──────────────────────────────────────────────── */
+.panel,.kpi,.indicator,.factor,.report-document,.empty-state{background:var(--card);border:1px solid var(--ink-2);border-radius:2px;box-shadow:5px 5px 0 #13233f1c}
+.panel{padding:26px 28px}
+.panel-heading{border-bottom:3px double var(--ink-2);padding-bottom:14px;margin-bottom:16px;align-items:end}
+.panel-heading h2{font-size:24px}
+.editorial-panel{background:var(--paper-2)}
+.text-link{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;text-decoration:none;border-bottom:1.5px solid var(--margin);padding-bottom:2px;color:var(--ink)}
+.text-link:hover{color:var(--margin)}
+.pill{border:1.5px solid var(--ink-2);border-radius:2px;background:var(--card);font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.kpi{padding:20px 22px 18px}
+.kpi .label{font:600 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.kpi strong{font:600 28px var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums slashed-zero;display:inline-block;border-bottom:3px double var(--ink);padding-bottom:4px;margin:16px 0 14px}
+.kpi p,.formula{color:var(--muted)}
+.indicator{padding:20px}
+.indicator-value{font:600 28px var(--mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums slashed-zero}
+.indicator-value.unavailable{font:400 14px var(--sans);letter-spacing:0}
+.indicator details{border-top:1px dashed var(--line-strong)}
+.factor{background:var(--paper-2)}
+.factor strong{font:600 28px var(--mono)}
+.factor-final,.eps{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.factor-final small{color:#c7d3e6}
+.operator{color:var(--margin);font-family:var(--mono)}
+.equilibrium{background:var(--paper-2)}
+.eps strong{font:600 38px var(--mono)}
+.structure-summary{border-top:1px dashed var(--line-strong)}
+.structure-summary span{font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.structure-summary strong{font:600 17px var(--mono);font-variant-numeric:tabular-nums}
+.signal{border-top:1px dashed var(--line-strong)}
+.path-strip{border-top:3px double var(--ink-2);border-bottom:1px solid var(--ink-2)}
+.step-number{font:600 34px var(--mono);color:var(--margin)}
+.chart-wrap{margin-top:14px}
+
+/* ── Tablas de libro: encabezado subrayado, renglones azules, cifras en monoespaciada ── */
+table{font-family:var(--sans)}
+thead th{background:transparent;color:var(--ink);font:600 10.5px var(--mono);letter-spacing:.11em;text-transform:uppercase;border-bottom:2px solid var(--ink)}
+th{background:transparent;font-weight:600}
+td,th{border-bottom:1px solid var(--line);padding:11px 10px}
+tbody tr:hover{background:#d8ad5018}
+table:not(.entry-table) td:not(:first-child){text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:13px}
+table:not(.entry-table) thead th:not(:first-child){text-align:right}
+.negative{color:var(--red)}.positive{color:var(--green)}
+
+/* ── Filas de cuentas ─────────────────────────────────────────────────────── */
+.account-table select,.account-table .acct-name{background:#fffdf7cc;border:0;border-bottom:1.5px solid var(--ink-2);border-radius:2px 2px 0 0;color:var(--ink);font-family:var(--sans)}
+.account-table select:focus,.account-table .acct-name:focus{background:#fff7cf;border-bottom-color:var(--margin)}
+.account-table td{border-bottom:1px solid var(--line)}
+.acct-chip{border:1.5px solid var(--line-strong);border-radius:2px;background:var(--card);font:600 10.5px var(--mono);letter-spacing:.05em;text-transform:none;color:var(--ink-2)}
+.acct-chip:hover{background:var(--paper-2);color:var(--ink)}
+.acct-chip.needs{border-color:var(--margin);background:#b23a2e10;color:var(--margin)}
+.acct-adv-fields{background:var(--paper-2);border:1px dashed var(--line-strong);border-radius:2px}
+.small-field{font:600 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.small-field b{font:600 13px var(--sans);letter-spacing:0;text-transform:none;color:var(--ink)}
+.partial-box{background:var(--card);border:1px solid var(--ink-2);border-radius:2px;box-shadow:3px 3px 0 #13233f14}
+.partial-box legend{font:400 12px var(--sans);letter-spacing:0;text-transform:none}
+.check{font:500 14px var(--sans);letter-spacing:0;text-transform:none}
+.check input{accent-color:var(--cover-3)}
+
+/* ── Estados: tablas agrupadas por secciones, subtotales y cuadre ───────────── */
+.ledger-table{border-collapse:separate;border-spacing:0}
+.grp-head td{background:var(--paper-2);border-top:2px solid var(--ink);border-bottom:1px solid var(--line-strong);padding:9px 10px}
+.grp-title{font:700 13px var(--slab);text-transform:uppercase;letter-spacing:.09em;color:var(--ink)}
+.grp-head.pending .grp-title{color:var(--margin)}
+.grp-add{float:right;background:none;border:0;border-bottom:1.5px solid var(--margin);color:var(--ink);font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 0;cursor:pointer}
+.grp-add:hover{color:var(--margin)}
+.grp-total td{font:600 13px var(--mono);border-top:1px solid var(--ink);color:var(--ink);font-variant-numeric:tabular-nums slashed-zero;text-align:right}
+.grp-total td:first-child{font:600 12px var(--sans);letter-spacing:.02em;color:var(--muted)}
+.grp-sum td{font:700 13px var(--mono);border-top:1px solid var(--ink);border-bottom:3px double var(--ink);background:#d8ad5018;font-variant-numeric:tabular-nums slashed-zero;text-align:right}
+.grp-sum td:first-child{font:700 14px var(--slab);text-transform:uppercase;letter-spacing:.06em;text-align:left}
+.acct-chip.quiet{border-color:transparent;background:transparent;color:var(--muted);padding-left:0}
+.acct-chip.quiet:hover{border-color:var(--line-strong);padding-left:11px}
+.cuadre{margin-top:20px;border:1px solid var(--ink-2);background:var(--card);box-shadow:4px 4px 0 #13233f14}
+.cuadre-line{display:flex;flex-wrap:wrap;gap:8px 26px;align-items:center;padding:12px 16px;border-bottom:1px dashed var(--line-strong);font:400 13px var(--mono)}
+.cuadre-line:last-child{border-bottom:0}
+.cuadre-period{font-weight:700;letter-spacing:.08em;min-width:96px}
+.cuadre-line b{font-weight:600;font-variant-numeric:tabular-nums slashed-zero}
+.cuadre .stamp{margin-left:auto}
+
+/* ── Resumen: balance en T ──────────────────────────────────────────────────── */
+.t-panel{margin-bottom:28px}
+.t-grid{display:grid;grid-template-columns:1fr 1fr;border-top:3px solid var(--ink)}
+.t-side{padding:0 26px 10px}
+.t-side+.t-side{border-left:3px solid var(--ink)}
+.t-side h3{font:700 13px var(--mono);letter-spacing:.2em;text-transform:uppercase;text-align:center;margin:14px 0 10px}
+.t-side table{width:100%}
+.t-side tr.t-total td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:700;background:#d8ad5018}
+.t-side{min-width:0;overflow-x:auto}
+@media(max-width:1000px){.t-grid{grid-template-columns:1fr}.t-side+.t-side{border-left:0;border-top:3px solid var(--ink)}}
+
+/* ── Sellos de estado (insignias y validaciones) ───────────────────────────── */
+.badge{border:1.5px solid currentColor;border-radius:2px;background:transparent;font:700 10px var(--mono);letter-spacing:.11em;text-transform:uppercase;padding:4px 8px;transform:rotate(-1.5deg);color:var(--muted)}
+.badge.critical{color:var(--red);background:#b23a2e0d}
+.badge.attention{color:var(--yellow);background:#d8ad5018}
+.badge.favorable{color:var(--green);background:#1f6b470d}
+.validation{font:400 13px/1.55 var(--mono);color:var(--muted);padding:10px 12px;margin-top:10px;border-left:4px solid var(--red);background:#b23a2e0d}
+.validation.ok{color:var(--green);border-left-color:var(--green);background:#1f6b470d}
+.notice,.warning,.source-note{background:#fff8dc;border:1px solid #d8ad50;border-left:5px solid var(--gold);border-radius:2px;color:var(--ink)}
+.source-note{background:var(--paper-2);border-color:var(--line-strong);border-left-color:var(--ink-2)}
+.error{color:var(--red)}
+.stamp{display:inline-block;font:700 12px var(--mono);letter-spacing:.16em;text-transform:uppercase;border:2.5px solid currentColor;border-radius:3px;padding:6px 14px;transform:rotate(-2.5deg);white-space:nowrap}
+.stamp.ok{color:var(--green)}.stamp.bad{color:var(--red)}.stamp.wait{color:var(--muted)}
+
+/* ── Formularios varios ────────────────────────────────────────────────────── */
+.field,.settings-grid label,.small-select,.scenario-controls label{font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.field input,.settings-grid input,.settings-grid select{font-size:15px;letter-spacing:0;text-transform:none}
+.field.compact-field{font-size:0;gap:0;letter-spacing:0;text-transform:none}
+.field.compact-field input{font-size:14px;letter-spacing:0}
+.choices span{border:1.5px solid var(--ink-2);border-radius:2px;background:var(--card);font-family:var(--sans)}
+.choices input:checked+span{background:var(--gold);border-color:var(--ink);font-weight:600}
+.question legend span{font:600 12px var(--mono);color:var(--margin)}
+.empty-state{border-style:dashed;box-shadow:none;background:var(--paper-2)}
+.scenario-controls output{font-family:var(--mono)}
+.report-document{padding:44px;box-shadow:5px 5px 0 #13233f1c}
+.report-cover{border-bottom:3px double var(--ink)}
+
+/* ── Ventana «Pegar tabla» ─────────────────────────────────────────────────── */
+.import-bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:14px}
+.import-bar .muted{font-size:13px;flex:1 1 260px}
+.import-dialog{width:min(1120px,96vw);max-height:92vh;padding:0;border:1.5px solid var(--ink);border-radius:2px;background:var(--paper);color:var(--ink);box-shadow:8px 8px 0 #13233f55;overflow:hidden}
+.import-dialog[open]{display:flex;flex-direction:column}
+.import-dialog::backdrop{background:#0a1a13cc}
+.import-head{display:flex;justify-content:space-between;align-items:start;gap:16px;padding:20px 26px 12px;border-bottom:3px double var(--ink-2);background:var(--card)}
+.import-head h2{margin:0}
+.import-body{padding:18px 26px 26px;overflow:auto}
+.import-body textarea{width:100%;min-height:170px;font:400 13px/1.55 var(--mono);color:var(--ink);background:#fffdf7;border:1.5px solid var(--ink-2);border-radius:2px;padding:12px;resize:vertical;tab-size:14}
+.import-body textarea:focus{outline:0;border-color:var(--margin);box-shadow:0 0 0 3px #c2453a22}
+.import-options{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 4px}
+.import-options label{display:grid;gap:4px;font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.import-options select{min-width:210px;font:400 14px var(--sans);letter-spacing:0;text-transform:none}
+.import-actions{margin:14px 0 6px}
+.import-notes .notice{margin:10px 0 0;padding:10px 14px;font-size:13.5px}
+.import-table th,.import-table td{padding:8px 6px;vertical-align:top}
+.import-table td:first-child{width:34px}
+.import-table input[type=checkbox]{width:18px;height:18px;min-height:0;accent-color:var(--cover-3)}
+.import-table input[type=number],.import-table select,.import-table .acct-name{min-width:0;width:100%;font-size:13px;min-height:38px}
+.import-table td:nth-child(2){min-width:170px}
+.import-table td:nth-child(3){min-width:138px}
+.import-table td:nth-child(4),.import-table td:nth-child(5){min-width:118px}
+.import-table td:nth-child(n+6):not(:last-child){min-width:112px}
+.import-table tr.off td:not(:first-child){opacity:.45}
+.import-table tr.doubt-warn td{background:#d8ad5012}
+.import-table tr.doubt-error td{background:#b23a2e10}
+.import-table td.doubts{min-width:190px}
+.import-table td.doubts small{display:block;font:400 11.5px/1.45 var(--sans);color:var(--yellow);margin-bottom:3px}
+.import-table td.doubts small.error{color:var(--red);font-weight:600}
+.import-checks td:first-child{font-family:var(--sans)}
+.import-body h3{margin:22px 0 8px}
+.import-foot{margin-top:18px;padding-top:14px;border-top:3px double var(--ink-2);display:grid;gap:10px}
+.import-blockers{margin:0;padding:10px 14px 10px 32px;background:#b23a2e10;border-left:4px solid var(--red);font-size:13.5px;color:var(--red)}
+.import-buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.import-buttons .primary[disabled]{opacity:.45;box-shadow:none;cursor:not-allowed}
+
+/* ── Pie ────────────────────────────────────────────────────────────────────── */
+footer{border-top:3px double var(--ink-2);font:400 11px var(--mono);letter-spacing:.06em;color:var(--muted);margin-top:56px}
+footer strong{font-family:var(--slab);font-size:14px;color:var(--ink)}
+
+/* ── Pantallas pequeñas ─────────────────────────────────────────────────────── */
+@media(max-width:1080px){
+  main{padding:28px 24px 0 56px}
+}
+@media(max-width:760px){
+  .topbar{height:76px}
+  .brand{font-size:22px}
+  .nav{padding-left:14px;padding-right:14px}
+  .nav a{padding:10px 14px 9px;font-size:12.5px}
+  main{padding:24px 16px 0 22px;
+    background-image:linear-gradient(to right,transparent 0 12px,var(--margin) 12px 13px,transparent 13px 15px,var(--margin) 15px 16px,transparent 16px),repeating-linear-gradient(to bottom,transparent 0 31px,var(--line) 31px 32px)}
+  .panel{padding:20px 18px}
+  .page-heading{flex-direction:column;align-items:flex-start;gap:14px}
+  .period-badge{display:block;transform:none;max-width:100%}
+}
+
+/* ── Impresión: el reporte va en blanco, sin hoja ni tapa ───────────────────── */
+@media print{
+  body{background:#fff!important}
+  main{background:none!important;box-shadow:none!important;padding:0!important;margin:0!important;min-height:0!important;max-width:none!important}
+  .report-document{box-shadow:none!important;background:#fff!important}
+}

@@ -1,176 +1,225 @@
-/* Extensiones de análisis. Los casos solo se guardan en este navegador. */
-(() => {
-  'use strict';
-  const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const ratio = value => value === null ? 'Sin pasivo corriente' : `${fmt(value)} ×`;
-  const storageKey = 'gesticode.cases.v1';
-  let analysisData = null, profitData = null, scenarioData = null;
-  let charts = [], restoring = false, storageBlocked = false, library = null, lastStored = null;
-  const initialResults = Object.fromEntries(['health','profit','analysis'].map(key => [key, $(`#${key}-result`).innerHTML]));
-  const assumptions = 'Escenario pro forma del mismo período, con saldos al cierre. Se mantiene el margen neto: utilidad nueva = utilidad base × (1 + variación de ventas). Solo la diferencia de utilidad se suma al efectivo y al patrimonio, sin dividendos. El pago de proveedores reduce efectivo y cuentas por pagar por igual. Cuentas por cobrar, inventarios, activos no corrientes y los demás pasivos no cambian. No se modelan cambios en impuestos, intereses, precios ni capital de trabajo adicional. No es una proyección de flujo de caja.';
+/* Presentación, semáforos, gráficos, escenarios y reporte sobre el estado central. */
+'use strict';
+const metricNames={workingCapital:'Capital de trabajo neto',currentRatio:'Razón corriente',quickRatio:'Prueba ácida',inventoryTurnover:'Rotación de inventarios',inventoryDays:'Días de inventario',receivableTurnover:'Rotación de cuentas por cobrar',collectionDays:'Período promedio de cobro',payableTurnover:'Rotación de cuentas por pagar',paymentDays:'Período promedio de pago',fixedTurnover:'Rotación de activos fijos',assetTurnover:'Rotación de activos totales',debtRatio:'Índice de deuda',debtEquity:'Deuda / patrimonio',interestCoverage:'Cobertura de intereses',grossMargin:'Margen bruto',operatingMargin:'Margen operativo',netMargin:'Margen neto',roa:'ROA · rendimiento de activos',roe:'ROE · retorno del patrimonio',gao:'Apalancamiento operativo · GAO',gaf:'Apalancamiento financiero · GAF',gat:'Apalancamiento total · GAT',breakEvenSales:'Equilibrio operativo monetario'};
+const unitLabel={percent:'%',money:'importe',times:'veces',days:'días','money/share':'por acción'};
+const valueOf=m=>!m||m.value===null?esc(m?.reason||'Datos pendientes'):m.unit==='percent'?pct(m.value):fmt(m.value)+(m.unit==='times'?' ×':m.unit==='days'?' días':m.unit==='money/share'?' / acción':'');
+let result=null,cvuBase=null,cvuAlt=null,financialScenario=null,engineError='',cvuError='',alternativeError='',scenarioError='';
+let chartInstances={};let chartsLoaded=false;
+const empty=message=>'<div class="empty-state">'+esc(message)+' <a href="#estados">Revisar datos ↗</a></div>';
+function thresholds(){
+ const t=state.thresholds,valid=Object.keys(thresholdDefaults).every(k=>typeof t[k]==='number'&&Number.isFinite(t[k])&&(k==='workingCapital'||t[k]>=0))&&t.currentMin<=t.currentMax&&['debtRatio','roe','netMargin'].every(k=>t[k]<=1);
+ $('#threshold-error').textContent=valid?'':'Umbrales inválidos. Se usan las referencias por defecto hasta corregirlos (porcentajes 0–100 y rango corriente ordenado).';
+ return valid?t:thresholdDefaults;
+}
+function signal(key,m){
+ const t=thresholds();if(!m||m.value===null)return {type:'neutral',label:'Sin referencia calculable',text:m?.reason||'Completa los datos requeridos.'};
+ const v=m.value;
+ if((key==='quickRatio'&&v<t.quickRatio)||(key==='workingCapital'&&v<t.workingCapital)||(key==='interestCoverage'&&v<t.interestCoverage)||(key==='debtRatio'&&v>t.debtRatio))return {type:'critical',label:'Crítico',text:({quickRatio:'La cobertura sin inventarios podría ser insuficiente para las obligaciones corrientes.',workingCapital:'El pasivo corriente supera el activo corriente; revisa la programación de caja.',interestCoverage:'La utilidad operativa ofrece una cobertura reducida frente a los intereses.',debtRatio:'Una proporción elevada de los activos se financia con pasivos; revisa plazos y capacidad de pago.'})[key]};
+ if((key==='inventoryDays'&&v>t.inventoryDays)||(key==='collectionDays'&&v>t.collectionDays)||(key==='gat'&&v>t.gat))return {type:'attention',label:'Atención',text:({inventoryDays:'La permanencia del inventario supera la referencia; podría inmovilizar recursos.',collectionDays:'El plazo de cobro supera la referencia; contrasta con la política comercial.',gat:'El resultado por acción presenta alta sensibilidad a cambios en ventas bajo estos supuestos.'})[key]};
+ if((key==='currentRatio'&&v>=t.currentMin&&v<=t.currentMax)||(key==='roe'&&v>t.roe)||(key==='netMargin'&&v>t.netMargin))return {type:'favorable',label:'Referencia favorable',text:'El indicador supera o se ubica dentro de la referencia didáctica configurada. No sustituye la evaluación de los demás indicadores.'};
+ return {type:'neutral',label:'Lectura contextual',text:'Interpreta este resultado según el sector, la tendencia y los otros indicadores; no tiene una señal activada con las reglas actuales.'};
+}
+const badge=s=>'<span class="badge '+s.type+'">'+(s.type==='critical'?'! ':s.type==='attention'?'△ ':s.type==='favorable'?'✓ ':'')+s.label+'</span>';
+function card(key,m,source=''){
+ const trace=source||('Fuente: estados del caso activo; T2 '+state.year+'. '+$('#method-note').textContent);
+ const s=signal(key,m);return '<article class="indicator"><div class="indicator-header"><h3>'+metricNames[key]+'</h3>'+badge(s)+'</div><strong class="indicator-value '+(m?.value===null?'unavailable':'')+'">'+valueOf(m)+'</strong><p class="formula">'+esc(m?.formula||'')+'</p><details><summary>Interpretación y trazabilidad</summary><p><b>Resultado matemático:</b> '+valueOf(m)+'.</p><p><b>Interpretación:</b> '+esc(s.text)+'</p><p class="muted">'+esc(trace)+'</p></details></article>';
+}
+function group(title,metrics,note='',source=''){return '<section class="ratio-group"><div class="section-title"><h2>'+title+'</h2>'+(note?'<p>'+esc(note)+'</p>':'')+'</div><div class="indicator-grid">'+Object.entries(metrics).map(([k,m])=>card(k,m,source)).join('')+'</div></section>';}
+function table(headers,rows){return '<div class="table-scroll"><table><thead><tr>'+headers.map(h=>'<th scope="col">'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+row.map((c,i)=>i?'<td>'+c+'</td>':'<th scope="row">'+c+'</th>').join('')+'</tr>').join('')+'</tbody></table></div>';}
+function healthHTML(){
+ const answered=state.health.filter(v=>v!==null).length;
+ if(answered<4)return '<p class="eyebrow">DIAGNÓSTICO CUALITATIVO</p><h2>Primero, observar.</h2><p>'+answered+' de 4 respuestas. Completa el cuestionario para interpretar señales operativas sin reemplazar las razones financieras.</p>';
+ const risk=[state.health[0]==='no',state.health[1]==='no',state.health[2]==='yes',state.health[3]==='yes'],critical=risk.slice(0,3).some(Boolean);
+ const messages=['Ordena las fechas de pago y revisa el efectivo disponible.','Prepara un presupuesto de caja y revisa cobros y gastos operativos.','Revisa las cuotas y el costo de la deuda antes de asumir nuevas obligaciones.','Evalúa la rotación del inventario y las compras para liberar efectivo.'];
+ return '<p class="eyebrow">LECTURA CUALITATIVA · '+risk.filter(Boolean).length+' SEÑALES</p><h2>'+(critical?'Primero, estabilizar.':risk[3]?'Atención al inventario.':'Una base favorable.')+'</h2><p>'+(critical?'Las respuestas son consistentes con presiones operativas. Conviene estudiarlas antes de ampliar el financiamiento.':'Contrasta estas respuestas con los indicadores, los flujos de caja y el costo de financiamiento.')+'</p><ul>'+messages.filter((_,i)=>risk[i]).map(t=>'<li>'+t+'</li>').join('')+'</ul><p class="muted">El árbol prioriza pagos, cobertura operativa y deuda; después inventario. Este cuestionario no constituye un semáforo global ni determina capacidad de endeudamiento.</p>';
+}
+function analysisTable(type){
+ const b=type==='balance'?result?.currentBalance:result?.currentIncome,p=type==='balance'?result?.previousBalance:result?.previousIncome;
+ const title=type==='balance'?'Balance general':'Estado de resultados';
+ if(!b)return '<article class="panel"><h2>'+title+'</h2>'+empty(result?.errors[type==='balance'?'balance':'income']||engineError||'Completa los estados financieros.')+'</article>';
+ const keys=type==='balance'?[...F.balanceKeys.slice(0,6),'currentAssets','assets',...F.balanceKeys.slice(6,10),'currentLiabilities','liabilities','equity','funding']:['sales','costSales','grossProfit','operatingExpenses','ebit','interest','ebt','taxes','netProfit','preferredDividends','commonProfit'];
+ const labels={...balanceLabels,...incomeLabels,currentAssets:'Total activos corrientes',assets:'Total activos',currentLiabilities:'Total pasivos corrientes',liabilities:'Total pasivos',funding:'Total pasivos + patrimonio'};
+ const rows=keys.map(k=>{
+  const v=F.compareValues(p?p[k]:null,b[k],p?(type==='balance'?p.assets:p.sales):null,type==='balance'?b.assets:b.sales);
+  const unknown='<span class="muted">Sin informar</span>';
+  return [labels[k],p?(v.before===null?unknown:fmt(v.before)):'—',v.after===null?unknown:fmt(v.after),v.verticalBefore===null?'—':pct(v.verticalBefore),v.after===null?'—':v.verticalAfter===null?((type==='balance'?b.assets:b.sales)===null?'<span class="muted">Total sin informar</span>':'Base cero'):pct(v.verticalAfter),v.absolute===null?'—':fmt(v.absolute),v.relative===null?'<span class="muted">'+esc(v.after===null?'Sin informar en T2':p&&v.before===null?'Sin informar en T1':v.relativeReason)+'</span>':pct(v.relative)];
+ });
+ return '<article class="panel"><p class="eyebrow">ANÁLISIS VERTICAL + HORIZONTAL</p><h2>'+title+'</h2>'+table(['Cuenta','T1 · '+(state.year-1),'T2 · '+state.year,'Vertical T1','Vertical T2','Δ absoluto','Δ relativo'],rows)+'</article>';
+}
+function accountsAnalysis(){
+ const two=state.hasPrevious,title='<p class="eyebrow">ANÁLISIS POR CUENTA</p><h2>Balance general, cuenta por cuenta</h2>';
+ const accounts=state.accounts.map(a=>two?a:{...a,amounts:{previous:null,current:a.amounts.current}});
+ if(!accounts.some(a=>a.amounts.current!=null||a.amounts.previous!=null))return '';
+ let cmp;
+ try{cmp=F.compareBalanceAccounts(accounts,state.partial?.enabled?{complete:{previous:state.partial.complete,current:state.partial.complete}}:{});}
+ catch(e){return '<article class="panel section-space">'+title+empty(e.message)+'</article>';}
+ const cell=v=>v===null||v===undefined?'—':fmt(v),share=v=>v===null||v===undefined?'—':pct(v);
+ const rel=r=>r.relative===null?'<span class="muted">'+esc(r.relativeReason||'—')+'</span>':pct(r.relative);
+ const cols=two?['Cuenta','T1 · '+(state.year-1),'T2 · '+state.year,'Vertical T1','Vertical T2','Δ absoluto','Δ relativo']:['Cuenta','T2 · '+state.year,'Vertical T2'];
+ const line=(label,r,cls)=>'<tr'+(cls?' class="'+cls+'"':'')+'><th scope="row">'+label+'</th>'+(two?'<td>'+cell(r.before)+'</td>':'')+'<td>'+cell(r.after)+'</td>'+(two?'<td>'+share(r.verticalBefore)+'</td>':'')+'<td>'+share(r.verticalAfter)+'</td>'+(two?'<td>'+cell(r.absolute)+'</td><td>'+rel(r)+'</td>':'')+'</tr>';
+ const groupRows=Object.fromEntries(cmp.groups.map(g=>[g.key,g]));
+ let body='';
+ for(const g of balanceGroups){
+  if(g.sum){body+=line(esc(g.title),groupRows[g.total],'grp-sum');continue;}
+  const rows=cmp.accounts.map((r,i)=>[r,state.accounts[i]]).filter(([r,a])=>classOf(a)===g.key&&(r.before!==null||r.after!==null));
+  if(!rows.length)continue;
+  body+='<tr class="grp-head"><td colspan="'+cols.length+'"><span class="grp-title">'+esc(g.title)+'</span></td></tr>'+rows.map(([r])=>line(esc(r.name)+(r.sign===-1?' <span class="muted">(resta)</span>':'')+(r.memo?' <span class="muted">(de los cuales)</span>':''),r)).join('')+line('Subtotal · '+esc(g.title),groupRows[g.total],'grp-total');
+ }
+ const bal=cmp.balanced,bad=[bal.previous===false?'T1':'',bal.current===false?'T2':''].filter(Boolean),note=bad.length?'<p class="warning">El balance no cuadra en '+bad.join(' y ')+': las bases de activo y de financiamiento difieren.</p>':'';
+ return '<article class="panel section-space">'+title+'<div class="table-scroll"><table class="ledger-table analysis-table"><thead><tr>'+cols.map(c=>'<th scope="col">'+c+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>'+note+'<p class="muted">Vertical: cuenta / total de activos (activo) o / total de pasivo + patrimonio (financiamiento). Horizontal: (T2 − T1) / T1; con base cero no hay porcentaje. Las cuentas «resta» se muestran con su importe registrado.</p></article>';
+}
+function duPontHTML(p){
+ if(!p)return empty('Du Pont requiere estados válidos y la metodología seleccionada completa.');
+ const d=p.dupont;
+ return '<article class="panel section-space"><p class="eyebrow">MODELO DU PONT</p><h2>Tres factores. Un mismo retorno.</h2><div class="dupont-grid">'+[['Margen neto',d.margin,'Utilidad / ventas'],['Rotación de activos',d.turnover,'Ventas / activos base'],['Multiplicador',d.leverage,'Activos base / patrimonio base'],['ROE Du Pont',d.roe,'Producto de los tres factores']].map(([l,m,f],i)=>'<div class="factor '+(i===3?'factor-final':'')+'"><span>'+l+'</span><strong>'+valueOf(m)+'</strong><small>'+f+'</small></div>').join('<span class="operator" aria-hidden="true">×</span>')+'</div><p class="muted">Método: '+(p.method==='average'?'activos y patrimonio promedio T1/T2':'saldos al cierre T2')+'. Activos base: '+fmt(p.bases.assets)+'; patrimonio base: '+fmt(p.bases.equity)+'. Diferencia frente al ROE directo: '+(d.difference===null?'no calculable':Math.abs(d.difference)<1e-10?'0.00 puntos porcentuales (identidad verificada)':fmt(d.difference*100)+' puntos porcentuales')+'. Los factores se multiplican antes de redondear.</p></article>';
+}
+function cvuHTML(c){
+ const rows=[['Ventas',c.sales],['− Costos variables',c.variableCosts],['= Margen de contribución',c.contribution],['− Costos fijos',c.fixedCosts],['= UAII',c.ebit],['− Intereses',c.interest],['= UAI',c.ebt],['− Impuestos / crédito teórico',c.taxes],['= Utilidad después de impuestos',c.afterTax],['− Dividendos preferentes',c.preferredDividends],['= Utilidad común',c.commonProfit]];
+ return '<div class="cvu-layout"><article class="panel"><p class="eyebrow">CASCADA DE RESULTADOS</p><h2>Del ingreso a la acción.</h2>'+table(['Etapa','Importe'],rows.map(([l,v])=>[l,fmt(v)]))+'<div class="eps"><span>UPA · utilidad por acción</span><strong>'+valueOf(c.eps)+'</strong></div></article><div><article class="equilibrium panel"><p class="eyebrow">PUNTO DE EQUILIBRIO OPERATIVO</p><h2>'+fmt(c.breakEvenUnits)+' <span>unidades</span></h2><strong>'+fmt(c.breakEvenSales)+'</strong><p class="muted">CF / (P − CVu). Mínimo entero: '+fmt(c.minimumWholeUnits)+' unidades. Contribución por unidad: '+fmt(c.contributionUnit)+'.</p></article>'+group('Apalancamiento · método directo',{gao:c.gao,gaf:c.gaf,gat:c.gat},'Sensibilidad en el nivel de operación de esta base.','Fuente: CVU base independiente. Método directo; todos los factores usan cantidad, costos, financiamiento e impuestos de la misma base.')+'</div></div>';
+}
+function renderRatios(){
+ const text='Actividad: '+(result?.activity?.method==='average'?'promedios T1/T2':state.hasPrevious?'requiere balances T1 y T2 válidos':'saldos al cierre T2')+'. Rentabilidad: '+(result?.profitability?.method==='average'?'promedios de activos y patrimonio T1/T2':'saldos al cierre o datos pendientes')+'. Base de tiempo: '+state.params.days+' días.'+(result?.activity?.creditSalesAssumed?' Ventas a crédito supuestas = ventas totales (opción activada; infórmalas para usar el dato real).':'')+(result?.activity?.purchasesMethod==='inventory'&&result?.activity?.purchasesEstimated?' Compras = costo de ventas + inventario final − inventario inicial.':'');
+ $('#method-note').textContent=text;
+ const a=result?.activity;
+ $('#ratio-groups').innerHTML=(result?.liquidity?group('01 / Liquidez',result.liquidity,'Capacidad de cobertura de las obligaciones corrientes.'):empty('Completa un balance T2 conciliado.'))+
+ (a?group('02 / Actividad y eficiencia',a.metrics,(a.purchasesEstimated?(a.purchasesMethod==='inventory'?'Compras estimadas = costo de ventas + inventario final − inventario inicial: ':'Compras a crédito estimadas = '+fmt(state.params.purchaseRate*100)+' % del costo de ventas: '):'Compras a crédito reales: ')+fmt(a.purchases)+'. '+(a.method==='average'?'Bases promedio T1/T2.':'Bases al cierre T2.')):empty('Actividad requiere resultados y las bases de los períodos seleccionados.'))+
+ (result?.debt?group('03 / Endeudamiento y cobertura',result.debt):'')+(result?.profitability?group('04 / Rentabilidad',result.profitability.metrics):empty('Rentabilidad requiere estados válidos; un T1 incompleto no se sustituye por cierre silenciosamente.'));
+ $('#dupont-result').innerHTML=duPontHTML(result?.profitability);
+ const periods=[['T1 · '+(state.year-1),result?.previousBalance,result?.previousIncome],['T2 · '+state.year,result?.currentBalance,result?.currentIncome]];
+ $('#profit-trend-table').innerHTML=table(['Ejercicio','Margen neto','ROA al cierre','ROE al cierre'],periods.map(([label,b,i])=>{const p=b&&i?F.calculateProfitability(b,i,null,{returnMethod:'closing'}):null;return [label,p?valueOf(p.metrics.netMargin):'Sin datos',p?valueOf(p.metrics.roa):'Sin datos',p?valueOf(p.metrics.roe):'Sin datos'];}));
+ try{const q=F.dupont(state.quick);$('#quick-result').innerHTML=table(['ROA al cierre','ROE al cierre','Margen neto','Rotación','Multiplicador'],[[pct(q.roa),pct(q.roe),pct(q.margin),fmt(q.turnover)+' ×',fmt(q.leverage)+' ×']]);}catch{$('#quick-result').innerHTML='<p class="muted">Completa los cuatro valores. Las bases deben ser positivas y patrimonio no mayor que activos.</p>';}
+}
+function renderTAccount(){
+ const box=$('#t-account');if(!box)return;
+ const {balance}=window.ledgerSummaries(),sides=state.hasPrevious?['previous','current']:['current'];
+ const head='<thead><tr><th></th>'+sides.map(s=>'<th>'+(s==='current'?'T2 · '+state.year:'T1 · '+(state.year-1))+'</th>').join('')+'</tr></thead>';
+ const body=(list,total)=>'<tbody>'+list.map(([label,key])=>'<tr><td>'+label+'</td>'+sides.map(s=>'<td>'+numCell(balance[s].v?.[key])+'</td>').join('')+'</tr>').join('')+'<tr class="t-total"><td>'+total[0]+'</td>'+sides.map(s=>'<td>'+numCell(balance[s].v?.[total[1]])+'</td>').join('')+'</tr></tbody>';
+ box.innerHTML='<div class="t-grid"><div class="t-side"><h3>Activo</h3><table>'+head+body([['Activos corrientes','currentAssets'],['Activos no corrientes','nonCurrentAssets']],['Total activo','assets'])+'</table></div><div class="t-side"><h3>Pasivo y patrimonio</h3><table>'+head+body([['Pasivos corrientes','currentLiabilities'],['Pasivos no corrientes','nonCurrentLiabilities'],['Patrimonio','equity']],['Total pasivo + patrimonio','funding'])+'</table></div></div>';
+ const cur=balance.current,stamp=!cur.v?(cur.e&&!/al menos una cuenta/.test(cur.e)?['bad','REVISAR']:['wait','SIN DATOS']):cur.v.partial?['wait','PARCIAL']:cur.v.balanced?['ok','CUADRA']:['bad','NO CUADRA'];
+ $('#t-stamp').innerHTML='<span class="stamp '+stamp[0]+'">'+stamp[1]+'</span>';
+}
+function overview(){
+ const metrics=[['workingCapital',result?.liquidity?.workingCapital],['currentRatio',result?.liquidity?.currentRatio],['debtRatio',result?.debt?.debtRatio],['roe',result?.profitability?.metrics.roe]];
+ $('#overview-kpis').innerHTML=metrics.map(([k,m])=>'<article class="kpi"><span class="label">'+metricNames[k]+'</span><strong>'+(!m?'—':m.value===null?'N/C':valueOf(m))+'</strong>'+badge(signal(k,m))+'<p>'+(!m?'Completa los estados del caso.':esc(m.formula))+'</p></article>').join('');
+ const all={...result?.liquidity,...result?.debt,...result?.profitability?.metrics,...result?.activity?.metrics};
+ const signals=Object.entries(all).filter(([k,m])=>signal(k,m).type!=='neutral').slice(0,3);
+ $('#overview-signals').innerHTML=signals.length?signals.map(([k,m])=>'<div class="signal">'+badge(signal(k,m))+'<br><b>'+metricNames[k]+' · '+valueOf(m)+'</b><br>'+signal(k,m).text+'</div>').join(''):'<p>Completa tus estados o carga un ejemplo. Aquí aparecerán lecturas individuales; no una calificación única de la empresa.</p>';
+ const b=result?.currentBalance;
+ $('#overview-structure').innerHTML=b?[['Activos',b.assets],['Pasivos',b.liabilities],['Patrimonio',b.equity]].map(([l,v])=>'<span>'+l+'<strong>'+fmt(v)+'</strong></span>').join(''):'<span>La estructura se muestra cuando el balance T2 está completo y conciliado.</span>';
+}
+function renderScenarios(){
+ try{const c=state.classic;if(F.scenarioKeys.some(k=>c[k]===null))throw new Error('Completa la base independiente.');const s=F.simulate(c,c.growth,c.repayment);$('#classic-result').innerHTML=table(['Indicador','Base','Escenario'],[['ROA',pct(s.base.roa),pct(s.scenario.roa)],['ROE',pct(s.base.roe),pct(s.scenario.roe)],['Liquidez',s.base.liquidity===null?'Sin pasivo corriente':fmt(s.base.liquidity)+' ×',s.scenario.liquidity===null?'Sin pasivo corriente':fmt(s.scenario.liquidity)+' ×'],['Efectivo',fmt(s.base.cash),fmt(s.scenario.cash)],['Activos',fmt(s.base.assets),fmt(s.scenario.assets)],['Patrimonio',fmt(s.base.equity),fmt(s.scenario.equity)]]);}catch(e){$('#classic-result').innerHTML='<p class="muted">'+esc(e.message)+'</p>';}
+ $('#growth-output').textContent=pct(state.scenario.growth/100);$('#payment-output').textContent=pct(state.scenario.repayment/100);
+ financialScenario=null;scenarioError='';
+ try{financialScenario=F.simulateModel(model(),state.scenario.growth,state.scenario.repayment);}catch(e){scenarioError=e.message;}
+ if(financialScenario){
+  const s=financialScenario,a=s.base,b=s.result,rows=[];
+  for(const [label,k]of [['Activos corrientes','currentAssets'],['Activos totales','assets'],['Pasivos corrientes','currentLiabilities'],['Pasivos totales','liabilities'],['Patrimonio','equity'],['Efectivo','cash'],['Cuentas por pagar','payables']])rows.push([label,fmt(a.currentBalance[k]),fmt(b.currentBalance[k])]);
+  for(const [l,k]of [['Ventas','sales'],['UAII','ebit'],['Utilidad neta','netProfit']])rows.push([l,fmt(a.currentIncome[k]),fmt(b.currentIncome[k])]);
+  const before={...a.liquidity,...a.debt,...a.profitability?.metrics,...a.activity?.metrics},after={...b.liquidity,...b.debt,...b.profitability?.metrics,...b.activity?.metrics};
+  const oldOp=F.calculateOperatingModel(a.currentIncome),newOp=F.calculateOperatingModel(b.currentIncome);
+  if(oldOp&&newOp)for(const k of ['gao','gaf','gat','breakEvenSales']){before[k]=oldOp[k];after[k]=newOp[k];}
+  const comparisons=Object.entries(after).map(([k,m])=>[metricNames[k],valueOf(before[k]),valueOf(m),badge(signal(k,m))]);
+  $('#integrated-scenario-result').innerHTML='<article class="panel"><p class="eyebrow">BASE T2 → ESCENARIO INDEPENDIENTE</p><h2>Los cambios, conectados.</h2>'+table(['Estado afectado','Base','Escenario'],rows)+'<h3 class="section-space">Indicadores recalculados</h3>'+table(['Indicador','Base','Escenario','Referencia del escenario'],comparisons)+'<p class="muted">'+esc(s.assumptions)+'</p>'+(newOp?'<p class="'+(newOp.costSalesFullyVariable?'warning':'muted')+'"><b>Apalancamiento:</b> margen de contribución = ventas − costos variables (costo de ventas y gastos operativos sin sus partes fijas). '+esc(newOp.assumption)+'</p>':'')+'<p class="muted">Para equilibrio en unidades, utiliza CVU con precio unitario. Método de rentabilidad: '+(b.profitability?.method==='average'?'promedio T1/escenario':'cierre del escenario')+'.</p></article>';
+ }else $('#integrated-scenario-result').innerHTML=empty(scenarioError);
+ if(cvuBase&&cvuAlt){
+  const changes=F.leverageChanges(cvuBase,cvuAlt);
+  const rows=['sales','variableCosts','contribution','ebit','ebt','afterTax','commonProfit','breakEvenUnits','breakEvenSales'].map(k=>[({sales:'Ventas',variableCosts:'Costos variables',contribution:'Contribución',ebit:'UAII',ebt:'UAI',afterTax:'Utilidad después de impuestos',commonProfit:'Utilidad común',breakEvenUnits:'Equilibrio (unidades)',breakEvenSales:'Equilibrio (importe)'})[k],fmt(cvuBase[k]),fmt(cvuAlt[k])]);
+  rows.push(['UPA',valueOf(cvuBase.eps),valueOf(cvuAlt.eps)]);
+  $('#cvu-comparison').innerHTML='<article class="panel"><h2>Base CVU frente a alternativa</h2>'+table(['Concepto','Base','Alternativa'],rows)+table(['Grado','Directo base','Directo alternativa','Por variaciones base → alternativa'],['gao','gaf','gat'].map(k=>[k.toUpperCase(),valueOf(cvuBase[k]),valueOf(cvuAlt[k]),valueOf(changes[k])]))+'<p class="muted">'+(changes.sameStructure?'Solo cambia el volumen: las elasticidades por variaciones son comparables con los grados directos de la base.':'Cambió la estructura de precio, costos o financiamiento: los cocientes por variaciones son cambios observados, no sensibilidades aisladas del volumen.')+' Las variaciones con base cero se muestran como no definidas.</p></article>';
+ }else $('#cvu-comparison').innerHTML=empty(alternativeError||cvuError||'Completa la base y la alternativa CVU.');
+}
+function legacy(){
+ $('#legacy-details').hidden=!state.legacy;
+ if(!state.legacy){$('#legacy-content').innerHTML='';return;}
+ const raw=state.legacy.forms||{},b=raw['analysis-form']||{},keys=['cash','receivables','inventory','fixed','payables','debt','equity'];
+ const names={...balanceLabels,fixed:'Activos no corrientes netos (sin desglose)',debt:'Otros pasivos (sin clasificación)'};
+ const numeric=(key,j)=>b[key+j]!==''&&b[key+j]!=null?Number(b[key+j]):null;
+ const totals=[0,1].map(j=>keys.slice(0,4).every(k=>numeric(k,j)!==null)?keys.slice(0,4).reduce((a,k)=>a+numeric(k,j),0):null);
+ let html='<p class="muted">Se preservan los originales. Otros pasivos requieren separación entre corriente y largo plazo; activos no corrientes requieren clasificación antes de usar rotación de activos fijos.</p>'+table(['Cuenta original','T1','T2','Vertical T1','Vertical T2','Δ relativo'],keys.map(k=>{const a=numeric(k,0),b=numeric(k,1),v=F.compareValues(a,b,totals[0],totals[1]);return [names[k],a===null?'—':fmt(a),b===null?'—':fmt(b),v.verticalBefore===null?'—':pct(v.verticalBefore),v.verticalAfter===null?'—':pct(v.verticalAfter),v.relative===null?esc(v.relativeReason):pct(v.relative)];}));
+ const scenario=raw['scenario-form'];if(scenario){
+  const data=Object.fromEntries(F.scenarioKeys.map(k=>[k,scenario[k]===''?null:Number(scenario[k])]));
+  html+='<h3>Simulador original · margen constante</h3><p class="muted">Se conserva el escenario guardado, con su propia base y la metodología anterior. No alimenta los nuevos estados.</p>';
+  try{const s=F.simulate(data,Number(state.legacy.growth||0),Number(state.legacy.repayment||0));html+=table(['Indicador','Base anterior','Escenario anterior'],[['ROA',pct(s.base.roa),pct(s.scenario.roa)],['ROE',pct(s.base.roe),pct(s.scenario.roe)],['Liquidez',fmt(s.base.liquidity),fmt(s.scenario.liquidity)]]);}catch(e){html+='<p>'+esc(e.message)+'</p>';}
+  html+=table(['Entrada original','Valor'],Object.entries(scenario).map(([k,v])=>[esc(k),esc(v)]));
+ }
+ $('#legacy-content').innerHTML=html;
+}
+function refresh(){
+ result=null;engineError='';try{result=F.analyzeModel(model());}catch(e){engineError=e.message;}
+ cvuBase=null;cvuAlt=null;cvuError='';alternativeError='';
+ try{cvuBase=F.calculateCVU(state.cvu.base);}catch(e){cvuError=e.message;}
+ try{cvuAlt=F.calculateCVU(state.cvu.alternative);}catch(e){alternativeError=e.message;}
+ const note=state.note||'';$('#source-note').textContent=note;$('#source-note').hidden=!note;
+ for(const type of ['balance','income']){
+  const messages=[];if(engineError)messages.push(engineError);
+  else{const errKey=type==='balance'?'balance':'income',prevKey=type==='balance'?'previousBalance':'previousIncome';messages.push(result.errors[errKey]?'T2: '+result.errors[errKey]:'T2: datos válidos'+(type==='balance'?(result.currentBalance?.partial?' · balance parcial: no se exige que cuadre.':' · balance conciliado.'):(result.currentIncome?.partial?' · estado de resultados parcial: solo se calculan los indicadores de las categorías marcadas.':'.')));if(state.hasPrevious)messages.push(result.errors[prevKey]?'T1: '+result.errors[prevKey]:'T1: datos válidos.');}
+  $('#'+type+'-validation').innerHTML=messages.map(m=>'<p class="validation '+(m.includes('válidos')?'ok':'')+'">'+esc(m)+'</p>').join('');
+ }
+ $('#analysis-balance').innerHTML=accountsAnalysis()+analysisTable('balance');$('#analysis-income').innerHTML=analysisTable('income');
+ renderRatios();overview();renderTAccount();$('#health-result').innerHTML=healthHTML();legacy();
+ $('#cvu-result').innerHTML=cvuBase?cvuHTML(cvuBase):'<p class="warning" role="status">'+esc(cvuError)+'</p>';
+ renderScenarios();renderCharts();window.updateLedgerTotals?.();
+ if(location.hash==='#reporte')renderReport();
+}
+window.refresh=refresh;
+function chart(id,type,data,options={}){
+ const canvas=$('#'+id);if(!canvas)return;
+ if(!window.Chart||!data){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}return;}
+ const shared={responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,font:{family:'IBM Plex Mono',size:11},color:'#5d6a80'}},tooltip:{backgroundColor:'#13233f',padding:12,titleFont:{family:'IBM Plex Mono'},bodyFont:{family:'IBM Plex Mono'},cornerRadius:2}},scales:{x:{grid:{display:false},ticks:{color:'#5d6a80',font:{family:'IBM Plex Mono',size:11}}},y:{grid:{color:'#c9d7e6'},ticks:{color:'#5d6a80',font:{family:'IBM Plex Mono',size:11}}}}};
+ const merged={...shared,...options,plugins:{...shared.plugins,...options.plugins}};
+ try{if(chartInstances[id]){chartInstances[id].data=data;chartInstances[id].options=merged;chartInstances[id].update('none');}else chartInstances[id]=new Chart(canvas,{type,data,options:merged});}
+ catch{if(chartInstances[id])chartInstances[id].destroy();delete chartInstances[id];}
+}
+function renderCharts(){
+ const b=result?.currentBalance,p=result?.previousBalance,i=result?.currentIncome,pi=result?.previousIncome;
+ const labels=p?[String(state.year-1),String(state.year)]:[String(state.year)];
+ const balances=p?[p,b]:[b],colors=['#13233f','#1f6b47','#d8ad50','#93a9c3','#c2453a','#5d6a80'];
+ const overview=b?{labels,datasets:[['Activos','assets','#13233f'],['Pasivos','liabilities','#c2453a'],['Patrimonio','equity','#1f6b47']].map(([label,key,color])=>({label,data:balances.map(r=>r[key]),backgroundColor:color,borderRadius:4,maxBarThickness:45}))}:null;
+ chart('overview-chart','bar',overview);
+ $('#overview-chart-note').textContent=!b?'Completa el balance o carga un ejemplo.':!window.Chart?'Sin conexión con Chart.js. Los valores están debajo.':'';
+ const group=$('#chart-group').value==='funding'?['payables','otherCurrentLiabilities','longDebt','otherNonCurrentLiabilities','equity']:['cash','receivables','inventory','otherCurrentAssets','fixed','otherNonCurrentAssets'];
+ chart('vertical-chart','bar',b?{labels,datasets:group.map((key,j)=>({label:balanceLabels[key],data:balances.map(r=>r.assets>0?r[key]/r.assets*100:null),backgroundColor:colors[j]}))}:null,{scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,ticks:{callback:v=>v+' %'},grid:{color:'#c9d7e6'}}}});
+ chart('horizontal-chart','bar',b?{labels:F.balanceKeys.map(k=>balanceLabels[k]),datasets:balances.map((r,j)=>({label:labels[j],data:F.balanceKeys.map(k=>r[k]),backgroundColor:j?'#13233f':'#93a9c3',borderRadius:2}))}:null,{indexAxis:'y',scales:{x:{grid:{color:'#c9d7e6'}},y:{grid:{display:false},ticks:{font:{size:10}}}}});
+ const previousProfit=p&&pi?F.calculateProfitability(p,pi,null,{returnMethod:'closing'}):null,currentProfit=b&&i?F.calculateProfitability(b,i,null,{returnMethod:'closing'}):null;
+ chart('profit-chart','bar',currentProfit?{labels:['Margen neto','ROA','ROE'],datasets:[...(previousProfit?[{label:String(state.year-1),data:['netMargin','roa','roe'].map(k=>previousProfit.metrics[k].value===null?null:previousProfit.metrics[k].value*100),backgroundColor:'#93a9c3'}]:[]),{label:String(state.year),data:['netMargin','roa','roe'].map(k=>currentProfit.metrics[k].value===null?null:currentProfit.metrics[k].value*100),backgroundColor:'#13233f'}]}:null,{scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v+' %'},grid:{color:'#c9d7e6'}}}});
+ const c=cvuBase;
+ if(c){const max=Math.max(c.quantity*1.3,c.breakEvenUnits*1.5,1),xs=[0,max*.25,max*.5,max*.75,max,c.breakEvenUnits].sort((a,b)=>a-b);
+ chart('breakeven-chart','line',{datasets:[{label:'Ingresos',data:xs.map(x=>({x,y:x*c.price})),borderColor:'#1f6b47',backgroundColor:'#1f6b47',pointRadius:0},{label:'Costos totales',data:xs.map(x=>({x,y:c.fixedCosts+x*c.variableCost})),borderColor:'#c2453a',pointRadius:0},{label:'Costos fijos',data:xs.map(x=>({x,y:c.fixedCosts})),borderColor:'#5d6a80',borderDash:[5,5],pointRadius:0},{label:'Punto de equilibrio',data:[{x:c.breakEvenUnits,y:c.breakEvenSales}],borderColor:'#13233f',backgroundColor:'#fff',pointBorderWidth:3,pointRadius:7,showLine:false}]},{scales:{x:{type:'linear',title:{display:true,text:'Unidades'},grid:{display:false}},y:{title:{display:true,text:'Importe'},grid:{color:'#c9d7e6'}}}});}else chart('breakeven-chart','line',null);
+ document.querySelectorAll('.chart-library-note').forEach(el=>el.textContent=window.Chart?'Gráficos interactivos: pasa el cursor para ver valores y pulsa las leyendas para alternar series.':'Chart.js no está disponible. Los cálculos, tablas y reportes de datos siguen funcionando.');
+}
+window.resizeCharts=()=>Object.values(chartInstances).forEach(c=>c.resize());
+$('#chart-group').addEventListener('change',renderCharts);
+const chartScript=document.createElement('script');chartScript.src='https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';chartScript.async=true;chartScript.onload=()=>{chartsLoaded=true;renderCharts();};chartScript.onerror=renderCharts;document.head.append(chartScript);
+function reportClone(id){const node=$('#'+id).cloneNode(true);node.querySelectorAll('details').forEach(d=>d.open=true);node.querySelectorAll('input,select,button,canvas').forEach(n=>n.remove());return node.innerHTML;}
+function reportSection(title,html){return '<section class="report-section"><h2>'+title+'</h2>'+html+'</section>';}
+function reportIncomeInputs(){
+ const sides=state.hasPrevious?['previous','current']:['current'];
+ return '<h3>Cuentas del estado de resultados</h3>'+table(['Cuenta',...sides.map(s=>s==='current'?'T2 · '+state.year:'T1 · '+(state.year-1))],state.incomeAccounts.map((a,i)=>[esc(a.name||'Cuenta '+(i+1))+'<small> · '+esc(incomeCategoryLabels[a.category]||'Sin clasificar')+(a.sign===-1?' · resta':'')+'</small>',...sides.map(s=>a.amounts[s]==null?'No informado':fmt(a.amounts[s]))]));
+}
+function renderReport(){
+ let html='<header class="report-cover"><p class="eyebrow">GESTICODE / INFORME EJECUTIVO ACADÉMICO</p><h1>'+esc(active.name)+'</h1><p>'+esc(state.hasPrevious?(state.year-1)+' — '+state.year:state.year)+' · '+new Date().toLocaleString('es-NI')+'</p><p>'+esc(state.note||'Caso creado por el usuario.')+'</p></header>';
+ html+=reportSection('01 · Fuentes, períodos y métodos','<p>'+esc($('#method-note').textContent)+'</p><p>Compras estimadas: '+fmt(state.params.purchaseRate*100)+' % del costo de ventas si no se informan compras reales a crédito. Las ventas a crédito faltantes no se sustituyen por ventas totales. Las cifras no se redondean antes de calcular.</p>');
+ html+=reportSection('02 · Estados y análisis',reportClone('analysis-balance')+reportClone('analysis-income')+reportIncomeInputs());
+ html+=reportSection('03 · Indicadores y Du Pont',reportClone('ratio-groups')+reportClone('dupont-result')+reportClone('profit-trend-table'));
+ const thresholdsRows=Object.entries(state.thresholds).map(([k,v])=>[esc(k),typeof v==='number'?fmt(['debtRatio','roe','netMargin'].includes(k)?v*100:v):'Inválido; se usa referencia predeterminada']);
+ html+=reportSection('Referencias didácticas configuradas',table(['Regla','Umbral (% en deuda, ROE y margen)'],thresholdsRows)+'<p>Cada semáforo corresponde a su indicador. No existe una calificación global. Si la configuración es inválida se usan todas las referencias predeterminadas, tal como se avisa en Razones.</p>');
+ html+=reportSection('04 · CVU y apalancamiento',table(['Entrada CVU base','Valor'],F.cvuKeys.map(k=>[cvuLabels[k],state.cvu.base[k]===null?'No informado':fmt(state.cvu.base[k]*(k==='taxRate'?100:1))]))+reportClone('cvu-result')+'<p>GAO y GAF usan el método directo; GAT es su producto. Impuesto académico: UAI × tasa, incluyendo un beneficio fiscal teórico en pérdidas. Equilibrio: CF / (P − CVu). UPA = utilidad común / acciones.</p>');
+ html+=reportSection('05 · Escenarios', '<p>Variación de ventas: '+fmt(state.scenario.growth)+' %. Pago de proveedores: '+fmt(state.scenario.repayment)+' %.</p>'+reportClone('integrated-scenario-result')+table(['Entrada CVU alternativa','Valor'],F.cvuKeys.map(k=>[cvuLabels[k],state.cvu.alternative[k]===null?'No informado':fmt(state.cvu.alternative[k]*(k==='taxRate'?100:1))]))+reportClone('cvu-comparison'));
+ html+=reportSection('06 · Evaluación cualitativa',table(['Pregunta','Respuesta'],questions.map((q,i)=>[q,state.health[i]===null?'No respondida':state.health[i]==='yes'?'Sí':'No']))+healthHTML());
+ if(state.legacy)html+=reportSection('Anexo · Datos anteriores conservados',reportClone('legacy-content'));
+ if(state.classic&&F.scenarioKeys.some(k=>state.classic[k]!==null))html+=reportSection('Anexo · Simulador original independiente',table(['Entrada','Valor'],Object.entries(state.classic).map(([k,v])=>[esc(k),fmt(v)]))+reportClone('classic-result')+'<p>Modelo anterior de margen constante, con saldos al cierre e independiente de los estados integrados.</p>');
+ if(Object.values(state.quick).some(v=>v!==null))html+=reportSection('Anexo · Cálculo rápido independiente',table(['Entrada','Importe'],Object.entries(state.quick).map(([k,v])=>[esc(k),fmt(v)]))+reportClone('quick-result')+'<p>Estas cifras usan saldos al cierre y no forman parte de los estados integrados.</p>');
+ let images='';for(const [id,c]of Object.entries(chartInstances)){try{c.data.datasets.forEach((_,i)=>c.setDatasetVisibility(i,true));c.resize(850,340);c.update('none');images+='<figure><img src="'+c.toBase64Image()+'" alt="'+esc(c.canvas.getAttribute('aria-label'))+'"><figcaption>'+esc(c.canvas.getAttribute('aria-label'))+'</figcaption></figure>';c.resize();}catch{/* La tabla permanece como fuente accesible. */}}
+ if(images)html+=reportSection('Anexo gráfico',images);
+ html+=reportSection('Alcance','<p>Simulador educativo. Los resultados matemáticos se distinguen de interpretaciones prudentes. Las decisiones requieren contexto sectorial y análisis de caja. Los módulos incompletos se señalan expresamente y no conservan resultados anteriores.</p><p>Referencia: CFA Institute, Financial Analysis Techniques. Fórmulas CVU y umbrales según el enunciado académico aportado. Los ejemplos sintéticos se identifican en la fuente del caso.</p>');
+ $('#report-document').innerHTML=html;
+}
+window.renderReport=renderReport;
+$('#print-report').addEventListener('click',()=>{refresh();renderReport();window.print();});
+window.addEventListener('beforeprint',renderReport);
+refresh();navigate();
+// Herramienta de lectura: devuelve el mismo estado calculado que muestra el tablero.
+if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'read_financial_analysis',title:'Leer análisis financiero',description:'Lee indicadores y metodología del caso activo sin modificar sus datos.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute(){return {caseName:active.name,result,cvu:cvuBase,scenario:financialScenario?.result??null};}})).catch(()=>{});}catch{}}
 
-  $('.page-heading').insertAdjacentHTML('beforebegin', `<div class="case-toolbar" aria-label="Casos de estudio"><label>Caso guardado<select id="case-select" aria-label="Caso guardado"></select></label><label>Empresa o ejercicio<input id="case-name" maxlength="80" placeholder="Nombre del caso"></label><button class="secondary" id="save-case">Guardar nombre</button><button class="secondary" id="new-case">Nuevo caso</button><button class="primary report-button" id="prepare-report">Reporte / PDF ↗</button><p class="case-status" id="case-status" role="status">Los casos se guardan solo en este navegador.</p></div>`);
-  $('.nav').insertAdjacentHTML('beforeend', '<a href="#escenarios"><span>04</span> Simulador de escenarios</a>');
-  views.escenarios = ['Explora decisiones antes de tomarlas.', 'Compara una base financiera con cambios en ventas y pagos a proveedores.'];
-  $('#rentabilidad').insertAdjacentHTML('beforeend', '<div id="dupont-result" aria-live="polite"></div>');
-  $('#analisis').insertAdjacentHTML('beforeend', `<div id="analysis-charts" hidden><div class="chart-grid"><article class="chart-card"><div class="panel-heading"><h3>Composición del balance</h3><label><span class="visually-hidden">Grupo del gráfico</span><select id="chart-group"><option value="assets">Activos</option><option value="funding">Pasivos y patrimonio</option></select></label></div><p class="chart-note">Participación sobre el total de cada año.</p><div class="chart-wrap"><canvas id="vertical-chart" role="img" aria-label="Gráfico de composición vertical de los dos años. Valores disponibles en la tabla de análisis."></canvas></div></article><article class="chart-card"><h3>Evolución de las cuentas</h3><p class="chart-note">Importes de ambos años, en la moneda de tu caso.</p><div class="chart-wrap"><canvas id="horizontal-chart" role="img" aria-label="Gráfico de barras comparativo por cuenta. Valores disponibles en la tabla de análisis."></canvas></div></article></div><p id="chart-status" class="chart-note" role="status"></p></div>`);
-  $('footer').insertAdjacentHTML('beforebegin', `<section id="escenarios" class="module" hidden aria-labelledby="scenario-title"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">04 / ESCENARIOS PRO FORMA</p><h2 id="scenario-title">¿Qué pasaría si…?</h2></div><div class="inline-actions"><button class="secondary" id="import-scenario">Usar último balance</button><button class="secondary" id="example-scenario">Cargar ejemplo</button></div></div><p class="muted">Completa la base con cifras del mismo período. El patrimonio se calcula como activos menos pasivos. Todos los cambios se recalculan al instante.</p><form id="scenario-form"><div class="scenario-inputs" id="scenario-inputs"></div></form><p id="scenario-import-note" class="muted" role="status"></p></div><div class="scenario-controls"><div><label for="sales-change">Variación de ventas<output id="sales-change-value" for="sales-change">0 %</output></label><input id="sales-change" type="range" min="-50" max="50" value="0" step="1"><div class="range-limits"><span>−50 %</span><span>+50 %</span></div></div><div><label for="payables-change">Pago de cuentas por pagar<output id="payables-change-value" for="payables-change">0 %</output></label><input id="payables-change" type="range" min="0" max="100" value="0" step="1"><div class="range-limits"><span>Sin pago adicional</span><span>Pago total</span></div></div></div><div class="form-footer"><span class="muted">La base permanece intacta mientras exploras.</span><button class="secondary" id="reset-scenario">Restablecer cambios a 0 %</button></div><div id="scenario-result" class="scenario-results" aria-live="polite"></div><details class="method"><summary>Supuestos, fórmulas y límites del simulador</summary><p>${assumptions}</p><p>Liquidez corriente = (efectivo + cuentas por cobrar + inventarios) ÷ (cuentas por pagar + otros pasivos corrientes). Capital de trabajo = activos corrientes − pasivos corrientes. Si no hay pasivos corrientes, la razón se muestra como no aplicable. ROA y ROE usan los saldos ajustados del escenario.</p><p>Si la empresa tiene pérdidas, incrementar ventas a margen negativo incrementa la pérdida. Un mayor ROE por reducción de activos o uso de deuda no equivale, por sí solo, a mejor salud.</p></details></section><section id="report-preview" class="report-preview" hidden aria-label="Vista previa del reporte"><div class="report-actions"><div><h2>Reporte ejecutivo</h2><p class="muted">En la ventana de impresión, elige «Guardar como PDF».</p></div><div class="inline-actions"><button class="primary" id="print-report">Imprimir / Guardar PDF</button><button class="secondary" id="close-report">Cerrar reporte</button></div></div><div id="report-document" class="report-document"></div></section>`);
-  const scenarioLabels = { sales:'Ventas netas', profit:'Utilidad neta', cash:'Efectivo y bancos', receivables:'Cuentas por cobrar', inventory:'Inventarios', fixed:'Activos no corrientes netos', payables:'Cuentas por pagar (corrientes)', otherCurrent:'Otros pasivos corrientes', longDebt:'Pasivos a largo plazo' };
-  $('#scenario-inputs').innerHTML = Finance.scenarioKeys.map(key => `<label>${scenarioLabels[key]}<input name="${key}" type="number" step="any" ${key === 'profit' ? '' : `min="${key === 'sales' ? '0.01' : '0'}"`} max="1000000000000000" required placeholder="0.00"></label>`).join('');
-  navigate();
 
-  function renderDuPont(data) {
-    const d = Finance.dupont(data);
-    $('#dupont-result').innerHTML = `<article class="panel advanced-panel"><p class="eyebrow">MODELO DU PONT / DESGLOSE DEL ROE</p><h2>Tres palancas detrás del rendimiento.</h2><div class="dupont-grid"><div class="factor"><h3>Margen neto</h3><strong>${pct(d.margin * 100)}</strong><small>Utilidad neta / ventas<br>Eficiencia en costos</small></div><span class="operator" aria-hidden="true">×</span><div class="factor"><h3>Rotación de activos</h3><strong>${fmt(d.turnover)} ×</strong><small>Ventas / activos<br>Eficiencia comercial</small></div><span class="operator" aria-hidden="true">×</span><div class="factor"><h3>Apalancamiento</h3><strong>${fmt(d.leverage)} ×</strong><small>Activos / patrimonio<br>Multiplicador del capital</small></div><span class="operator" aria-hidden="true">=</span><div class="factor final-factor"><h3>ROE Du Pont</h3><strong>${pct(d.roe * 100)}</strong><small>Coincide con utilidad / patrimonio</small></div></div><p class="muted">ROE = margen neto × rotación de activos × multiplicador del patrimonio. Se calcula sin redondear los factores; las cifras visibles se redondean a dos decimales. Se utilizan saldos al cierre, igual que en las razones anteriores.</p><p class="muted">El apalancamiento amplifica el resultado para el capital propio, también cuando hay pérdidas. Evalúa sus componentes en conjunto y compara empresas del mismo sector.</p><p class="chart-note sources">Referencia metodológica: <a href="https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/financial-analysis-techniques" target="_blank" rel="noopener">CFA Institute · Financial Analysis Techniques</a>.</p></article>`;
-  }
-  document.addEventListener('profit:calculated', event => { profitData = event.detail; renderDuPont(profitData); invalidateReport(); });
-  document.addEventListener('analysis:calculated', event => { analysisData = event.detail; $('#analysis-charts').hidden = false; renderCharts(); invalidateReport(); });
-  document.addEventListener('health:calculated', invalidateReport);
-  $('#profit-form').addEventListener('input', () => { profitData = null; $('#dupont-result').innerHTML = ''; });
-  $('#analysis-form').addEventListener('input', () => { analysisData = null; destroyCharts(); $('#analysis-charts').hidden = true; });
-
-  function destroyCharts() { charts.forEach(chart => chart.destroy()); charts = []; }
-  function renderCharts() {
-    destroyCharts(); if (!analysisData) return;
-    if (!window.Chart) { $('#chart-status').textContent = 'Los gráficos requieren conexión para cargar Chart.js. Todos los valores siguen disponibles en la tabla.'; return; }
-    const { values, assets, year } = analysisData;
-    const indices = $('#chart-group').value === 'funding' ? [4,5,6] : [0,1,2,3];
-    const palette = ['#174d42','#528c70','#92bc78','#c4d988'];
-    const common = { responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:12}}}} };
-    try {
-      charts.push(new Chart($('#vertical-chart'), { type:'bar', data:{labels:[String(year),String(year+1)],datasets:indices.map((i,j) => ({label:accounts[i].label,data:[values[i][0]/assets[0]*100,values[i][1]/assets[1]*100],backgroundColor:palette[j]}))}, options:{...common,plugins:{...common.plugins,tooltip:{callbacks:{label:context => `${context.dataset.label}: ${pct(context.parsed.y)}`}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,title:{display:true,text:'% del total'},ticks:{callback:v => `${v} %`}}}} }));
-      charts.push(new Chart($('#horizontal-chart'), { type:'bar',data:{labels:accounts.map(a=>a.label),datasets:[0,1].map(i=>({label:String(year+i),data:values.map(v=>v[i]),backgroundColor:i ? '#84b85d' : '#174d42',borderRadius:3}))}, options:{...common,indexAxis:'y',scales:{x:{ticks:{callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{font:{size:11}}}}} }));
-      $('#chart-status').textContent = 'Pasa el cursor sobre una barra para ver su valor. Pulsa una leyenda para ocultar o mostrar esa serie. La tabla conserva todos los datos.';
-    } catch { destroyCharts(); $('#chart-status').textContent = 'No se pudieron dibujar los gráficos. Consulta los mismos datos en la tabla.'; }
-  }
-  $('#chart-group').addEventListener('change', () => {renderCharts(); invalidateReport();});
-  const chartScript = document.createElement('script');
-  chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';
-  chartScript.async = true; chartScript.onload = renderCharts;
-  chartScript.onerror = () => { if (analysisData) $('#chart-status').textContent = 'Chart.js no está disponible sin conexión. La tabla y los cálculos siguen funcionando.'; };
-  document.head.append(chartScript);
-
-  function scenarioBase() { return Object.fromEntries(Finance.scenarioKeys.map(key => [key, read($('#scenario-form'),key)])); }
-  function renderScenario() {
-    const growth = Number($('#sales-change').value), repayment = Number($('#payables-change').value);
-    $('#sales-change-value').textContent = `${growth > 0 ? '+' : ''}${growth} %`;
-    $('#payables-change-value').textContent = `${repayment} %`;
-    scenarioData = null;
-    if (!$('#scenario-form').checkValidity()) { $('#scenario-result').innerHTML = '<p class="scenario-empty">Completa todos los datos de la base, incluidos los ceros. También puedes cargar el ejemplo para explorar los controles.</p>'; return; }
-    try {
-      scenarioData = Finance.simulate(scenarioBase(),growth,repayment);
-      const {base,scenario:s} = scenarioData;
-      const metrics = [['ROA',pct(base.roa*100),pct(s.roa*100)],['ROE',pct(base.roe*100),pct(s.roe*100)],['Liquidez corriente',ratio(base.liquidity),ratio(s.liquidity)]];
-      const rows = [['Ventas',base.sales,s.sales],['Utilidad neta',base.profit,s.profit],['Efectivo',base.cash,s.cash],['Activos totales',base.assets,s.assets],['Pasivos corrientes',base.currentLiabilities,s.currentLiabilities],['Patrimonio',base.equity,s.equity],['Capital de trabajo',base.workingCapital,s.workingCapital]];
-      $('#scenario-result').innerHTML = `<div class="scenario-kpis">${metrics.map(([label,b,v])=>`<article><h3>${label}</h3><strong>${v}</strong><small>Base: ${b}</small></article>`).join('')}</div><div class="panel"><h3>De la base al escenario</h3><div class="table-scroll"><table><thead><tr><th>Concepto</th><th>Base</th><th>Escenario</th><th>Diferencia</th></tr></thead><tbody>${rows.map(([label,b,v])=>`<tr><th scope="row">${label}</th><td>${fmt(b)}</td><td>${fmt(v)}</td><td>${v-b>0?'+':''}${fmt(v-b)}</td></tr>`).join('')}</tbody></table></div><p class="muted">Pago a proveedores: ${fmt(scenarioData.payment)}. Cambio en utilidad retenida: ${fmt(scenarioData.retainedChange)}. El balance ajustado conserva activos = pasivos + patrimonio.</p></div>`;
-    } catch (error) { $('#scenario-result').innerHTML = `<p class="warning" role="status">${escape(error.message)}</p>`; }
-  }
-  $('#scenario-form').addEventListener('submit', e=>e.preventDefault());
-  $('#scenario-form').addEventListener('input', renderScenario);
-  ['sales-change','payables-change'].forEach(id => $(`#${id}`).addEventListener('input',renderScenario));
-  $('#reset-scenario').addEventListener('click', () => { $('#sales-change').value=0; $('#payables-change').value=0; renderScenario(); changed(); });
-  $('#example-scenario').addEventListener('click', () => {
-    const example={sales:200000,profit:15000,cash:25000,receivables:30000,inventory:35000,fixed:80000,payables:40000,otherCurrent:15000,longDebt:30000};
-    Object.entries(example).forEach(([k,v])=>$('#scenario-form').elements.namedItem(k).value=v);
-    $('#sales-change').value=0; $('#payables-change').value=0; $('#scenario-import-note').textContent='Ejemplo: patrimonio base 85,000; pasivos corrientes 55,000.'; renderScenario(); changed();
-  });
-  $('#import-scenario').addEventListener('click', () => {
-    if (!analysisData || !profitData) { $('#scenario-import-note').textContent='Genera primero un análisis y una rentabilidad válidos, sin cambios pendientes.'; return; }
-    const {values,assets,year}=analysisData;
-    if (Math.abs(assets[1]-profitData.assets)>0.01 || Math.abs(values[6][1]-profitData.equity)>0.01) { $('#scenario-import-note').textContent='Los activos y el patrimonio de rentabilidad no coinciden con el último año del balance. Corrige los datos para evitar mezclar casos.'; return; }
-    const valuesByKey={sales:profitData.sales,profit:profitData.profit,...Object.fromEntries(accounts.slice(0,5).map((a,i)=>[a.key,values[i][1]])),otherCurrent:'',longDebt:''};
-    Object.entries(valuesByKey).forEach(([k,v])=>$('#scenario-form').elements.namedItem(k).value=v);
-    $('#sales-change').value=0; $('#payables-change').value=0;
-    $('#scenario-import-note').textContent=`Base de ${year+1} copiada. Distribuye los otros pasivos (${fmt(values[5][1])}) entre corrientes y largo plazo; comprueba que la suma coincida. La clasificación no se puede inferir del balance resumido.`;
-    renderScenario(); changed();
-  });
-  renderScenario();
-
-  function invalidateReport() { $('#report-preview').hidden=true; }
-  const formIds=['health-form','analysis-form','profit-form','scenario-form'];
-  function capture() {
-    return { forms:Object.fromEntries(formIds.map(id=>[id,Object.fromEntries(new FormData($(`#${id}`)))])), year:$('#base-year').value, growth:$('#sales-change').value, repayment:$('#payables-change').value, hash:location.hash, importNote:$('#scenario-import-note').textContent };
-  }
-  function isValidData(data) {
-    return data && typeof data==='object' && data.forms && typeof data.forms==='object' && formIds.every(id=>data.forms[id] && typeof data.forms[id]==='object' && !Array.isArray(data.forms[id]) && Object.values(data.forms[id]).every(v=>typeof v==='string' && v.length<=100)) && ['year','growth','repayment'].every(k=>typeof data[k]==='string' && data[k].length<=20);
-  }
-  function validLibrary(value) { return value && value.version===1 && typeof value.activeId==='string' && Array.isArray(value.cases) && value.cases.length>0 && value.cases.length<=50 && value.cases.every(c=>typeof c.id==='string' && typeof c.name==='string' && c.name.length<=80 && isValidData(c.data)) && value.cases.some(c=>c.id===value.activeId) && new Set(value.cases.map(c=>c.id)).size===value.cases.length; }
-  function message(text,failed=false) { $('#case-status').textContent=text; $('#case-status').classList.toggle('failure',failed); }
-  function activeCase(){return library.cases.find(c=>c.id===library.activeId);}
-  function persist() {
-    if(storageBlocked) return false;
-    try {
-      const existing=localStorage.getItem(storageKey);
-      if(existing!==lastStored) {storageBlocked=true; message('El almacenamiento cambió en otra pestaña. Tus cambios siguen aquí; genera un reporte y recarga antes de seguir guardando.',true); return false;}
-      const serialized=JSON.stringify(library); localStorage.setItem(storageKey,serialized);lastStored=serialized;return true;
-    } catch {storageBlocked=true;message('No se pudo guardar en este navegador (permiso o espacio). Conserva esta pestaña o genera un reporte antes de cerrarla.',true);return false;}
-  }
-  function saveDraft() {
-    if(restoring || !library) return;
-    activeCase().data=capture(); activeCase().updatedAt=new Date().toISOString();
-    if(persist()) message('Cambios guardados automáticamente en este navegador · '+new Date().toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'})+'. No se sincronizan entre dispositivos.');
-  }
-  function changed(){invalidateReport();saveDraft();}
-  function refreshCases(){
-    $('#case-select').replaceChildren(...library.cases.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;return o;}));
-    $('#case-select').value=library.activeId;$('#case-name').value=activeCase().name;
-  }
-  function restore(data){
-    restoring=true; destroyCharts(); analysisData=null;profitData=null;scenarioData=null;
-    healthGenerated=false;analysisGenerated=false;profitGenerated=false;
-    for(const id of formIds){const form=$(`#${id}`);form.reset();for(const el of form.elements){if(!el.name)continue;const v=data.forms[id][el.name];if(el.type==='radio')el.checked=el.value===v;else el.value=typeof v==='string'?v:'';}}
-    $('#base-year').value=data.year; years();$('#sales-change').value=data.growth;$('#payables-change').value=data.repayment;
-    $('#scenario-import-note').textContent=typeof data.importNote==='string'?data.importNote.slice(0,500):'';
-    for(const key of ['health','profit','analysis']){$(`#${key}-result`).innerHTML=initialResults[key];$(`#${key}-error`).textContent='';}
-    $('#dupont-result').innerHTML='';$('#analysis-charts').hidden=true;
-    const answered=document.querySelectorAll('#health-form input:checked').length;$('#health-progress').textContent=`${answered} de 4 respuestas`;
-    if(answered===4)$('#health-form').requestSubmit();
-    for(const id of ['analysis-form','profit-form'])if($(`#${id}`).checkValidity())$(`#${id}`).requestSubmit();
-    renderScenario();invalidateReport();location.hash=typeof data.hash==='string' && Object.hasOwn(views,data.hash.slice(1)) ? data.hash : '#salud';navigate();
-    restoring=false;
-  }
-  try {
-    lastStored=localStorage.getItem(storageKey);
-    if(lastStored){const parsed=JSON.parse(lastStored);if(!validLibrary(parsed))throw new Error('invalid');library=parsed;}
-  }catch{storageBlocked=true;message('No se pudieron leer los casos guardados. No se sobrescribirán. Puedes trabajar temporalmente y generar un reporte.',true);}
-  if(!library){const id=crypto.randomUUID ? crypto.randomUUID() : String(Date.now());library={version:1,activeId:id,cases:[{id,name:'Caso sin nombre',data:capture(),updatedAt:new Date().toISOString()}]};if(!storageBlocked)persist();}
-  refreshCases();restore(activeCase().data);
-  if(!storageBlocked)message('Caso restaurado. Los cambios se guardan automáticamente solo en este navegador; borrar sus datos elimina los casos.');
-  document.addEventListener('input',event=>{if(event.target.closest('form') || ['sales-change','payables-change'].includes(event.target.id))changed();});
-  ['example-analysis','example-profit'].forEach(id=>$(`#${id}`).addEventListener('click',changed));
-  document.addEventListener('profit:calculated',saveDraft);
-  window.addEventListener('hashchange',saveDraft);
-  $('#save-case').addEventListener('click',()=>{const name=$('#case-name').value.trim();if(!name){message('Escribe un nombre para el caso.',true);return;}activeCase().name=name;changed();refreshCases();});
-  $('#case-select').addEventListener('change',()=>{const next=$('#case-select').value;saveDraft();if(storageBlocked){$('#case-select').value=library.activeId;return;}library.activeId=next;refreshCases();restore(activeCase().data);persist();if(!storageBlocked)message('Caso cargado: '+activeCase().name+'. Los cambios se guardan automáticamente.');});
-  $('#new-case').addEventListener('click',()=>{saveDraft();if(storageBlocked)return;if(library.cases.length>=50){message('Se alcanzó el límite de 50 casos en este navegador.',true);return;}const id=crypto.randomUUID ? crypto.randomUUID() : String(Date.now());const data={forms:Object.fromEntries(formIds.map(k=>[k,{}])),year:'2024',growth:'0',repayment:'0',hash:'#salud'};library.cases.push({id,name:`Caso ${library.cases.length+1}`,data,updatedAt:new Date().toISOString()});library.activeId=id;refreshCases();restore(data);persist();$('#case-name').focus();if(!storageBlocked)message('Nuevo caso listo. Escribe un nombre y completa sus datos.');});
-  window.addEventListener('storage',event=>{if(event.key===storageKey || event.key===null){storageBlocked=true;message('Otra pestaña modificó los casos. Para evitar sobrescribirlos, genera un reporte de tu trabajo y recarga esta página.',true);}});
-
-  function reportSection(title,content){return `<section><h2>${title}</h2>${content}</section>`;}
-  function cloneContent(selector){const node=$(selector).cloneNode(true);node.querySelectorAll('details').forEach(d=>d.open=true);node.querySelectorAll('button, .stale').forEach(n=>n.remove());return node.innerHTML;}
-  function prepareReport(){
-    // Generar siempre a partir de los inputs actuales, nunca de resultados obsoletos.
-    healthGenerated=false;analysisData=null;profitData=null;
-    if(document.querySelectorAll('#health-form input:checked').length===4)$('#health-form').requestSubmit();
-    for(const id of ['analysis-form','profit-form'])if($(`#${id}`).checkValidity())$(`#${id}`).requestSubmit();
-    renderScenario();
-    const missing=text=>`<p class="report-placeholder">${text}</p>`;
-    const sources=`<p class="sources">Metodología Du Pont: <a href="https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/financial-analysis-techniques">CFA Institute · Financial Analysis Techniques</a>. Gráficos: Chart.js 4.5.1. Umbrales de evaluación didácticos; deben adaptarse al sector.</p>`;
-    let report=`<header class="report-cover"><p class="eyebrow">GESTICODE / INFORME FINANCIERO ACADÉMICO</p><h1>${escape(activeCase().name)}</h1><p>Emitido: ${escape(new Date().toLocaleString('es-NI'))}. Importes expresados en la misma unidad monetaria ingresada.</p><p>Informe de los datos actuales. Los módulos incompletos se indican expresamente; los escenarios son hipotéticos.</p></header>`;
-    report+=reportSection('01 · Diagnóstico de salud',healthGenerated?`<table><tbody>${questions.map((q,i)=>`<tr><th>${q}</th><td>${$('#health-form').elements.namedItem(`q${i}`).value==='yes'?'Sí':'No'}</td></tr>`).join('')}</tbody></table>`+cloneContent('#health-result'):missing('No incluido: cuestionario incompleto.'));
-    let chartImages='';
-    if(analysisData && charts.length){chartImages='<p class="chart-note">Las gráficas incluyen todas las series; los valores numéricos se conservan en la tabla.</p>';for(const chart of charts){chart.data.datasets.forEach((_,i)=>chart.setDatasetVisibility(i,true));chart.resize(800,360);chart.update('none');chartImages+=`<img class="report-chart" src="${chart.toBase64Image()}" alt="${escape(chart.canvas.getAttribute('aria-label'))}">`;chart.resize();}}
-    report+=reportSection('02 · Análisis vertical y horizontal',analysisData?cloneContent('#analysis-result')+chartImages:missing('No incluido: balance incompleto o inválido. '+escape($('#analysis-error').textContent)));
-    if(profitData){const inputs=`<table><tbody>${[['Utilidad neta',profitData.profit],['Ventas netas',profitData.sales],['Activos totales',profitData.assets],['Patrimonio',profitData.equity]].map(([label,v])=>`<tr><th>${label}</th><td>${fmt(v)}</td></tr>`).join('')}</tbody></table>`;report+=reportSection('03 · Rentabilidad y modelo Du Pont',inputs+cloneContent('#profit-result')+cloneContent('#dupont-result')+cloneContent('#rentabilidad > .method'));}
-    else report+=reportSection('03 · Rentabilidad y modelo Du Pont',missing('No incluido: cifras incompletas o inválidas. '+escape($('#profit-error').textContent)));
-    if(analysisData && profitData && (Math.abs(analysisData.assets[1]-profitData.assets)>0.01 || Math.abs(analysisData.values[6][1]-profitData.equity)>0.01))report+='<p class="warning">Advertencia de consistencia: los activos o el patrimonio de rentabilidad no coinciden con el último balance. Se presentan como entradas independientes; no se deben interpretar como un único estado financiero conciliado.</p>';
-    report+=reportSection('04 · Simulador de escenarios',scenarioData?`<p>Variación de ventas: ${pct(scenarioData.growth)}. Pago adicional de proveedores: ${pct(scenarioData.repayment)}.</p><table><thead><tr><th>Base del escenario</th><th>Importe</th></tr></thead><tbody>${Object.entries(scenarioBase()).map(([key,v])=>`<tr><th>${scenarioLabels[key]}</th><td>${fmt(v)}</td></tr>`).join('')}</tbody></table>`+cloneContent('#scenario-result')+`<h3>Supuestos del modelo</h3><p>${assumptions}</p><p>Liquidez corriente = activos corrientes / pasivos corrientes. Capital de trabajo = activos corrientes − pasivos corrientes. El simulador tiene su propia base, que puede diferir de los otros módulos.</p>`:missing('No incluido: base incompleta o escenario no viable. '+escape($('#scenario-result').innerText)));
-    report+=reportSection('Criterios y alcance',sources+'<p>Los cálculos se realizan en el navegador. ROA = utilidad / activos; ROE = utilidad / patrimonio; margen neto = utilidad / ventas. No se utilizan saldos promedio. Este reporte apoya un ejercicio académico y no determina por sí solo una decisión de financiamiento.</p>');
-    $('#report-document').innerHTML=report;$('#report-preview').hidden=false;
-    $('#report-preview').scrollIntoView({behavior:'smooth',block:'start'});
-    saveDraft();
-  }
-  $('#prepare-report').addEventListener('click',prepareReport);
-  $('#print-report').addEventListener('click',()=>window.print());
-  $('#close-report').addEventListener('click',()=>$('#report-preview').hidden=true);
-  window.addEventListener('beforeprint',()=>{if($('#report-preview').hidden)prepareReport();});
-})();

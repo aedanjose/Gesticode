@@ -1,0 +1,38 @@
+Comercial Volcán, S.A.
+Balance general al 31 de diciembre (en córdobas)
+Cuenta	2025	2024
+ACTIVOS
+Activos corrientes
+Efectivo y bancos	420,000	350,000
+Valores negociables	80,000	60,000
+Cuentas por cobrar	610,000	520,000
+Inventarios	740,000	690,000
+Gastos pagados por anticipado	27,000	25,000
+Total activos corrientes	1,877,000	1,645,000
+Activos no corrientes
+Terrenos y edificios	1,500,000	1,500,000
+Maquinaria y equipo	900,000	800,000
+Mobiliario y accesorios	200,000	180,000
+Menos: Depreciación acumulada	(620,000)	(540,000)
+Activos fijos netos	1,980,000	1,940,000
+Inversiones en acciones	150,000	100,000
+Total activos no corrientes	2,130,000	2,040,000
+Total activos	4,007,000	3,685,000
+PASIVOS Y PATRIMONIO
+Pasivos corrientes
+Cuentas por pagar	480,000	430,000
+Documentos por pagar	150,000	120,000
+Deudas acumuladas	90,000	80,000
+Anticipos de clientes	60,000	40,000
+Total pasivos corrientes	780,000	670,000
+Pasivos no corrientes
+Deuda a largo plazo	900,000	950,000
+Total pasivos no corrientes	900,000	950,000
+Total pasivos	1,680,000	1,620,000
+Patrimonio de los accionistas
+Acciones preferentes	200,000	200,000
+Acciones comunes	800,000	800,000
+Capital pagado en exceso	300,000	300,000
+Utilidades retenidas	1,027,000	765,000
+Total patrimonio	2,327,000	2,065,000
+Total pasivos y patrimonio	4,007,000	3,685,000

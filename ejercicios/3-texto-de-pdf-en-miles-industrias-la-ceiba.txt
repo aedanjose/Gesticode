@@ -1,0 +1,22 @@
+INDUSTRIAS LA CEIBA, S.A.
+Balance general (en miles de córdobas)
+Al 31 de diciembre
+
+                                         2025       2024
+Activos corrientes
+Efectivo ...............................  120        95
+Cuentas por cobrar .....................  310       280
+Inventarios ............................  450       410
+Total de activos corrientes ............  880       785
+Activos no corrientes
+Maquinaria y equipo ....................  900       850
+Menos: Depreciación acumulada ..........  (310)     (270)
+Activos fijos netos ....................  590       580
+Total de activos .......................  1,470     1,365
+Pasivos corrientes
+Cuentas por pagar ......................  260       240
+Pasivos no corrientes
+Préstamos bancarios a largo plazo ......  400       420
+Total de pasivos .......................  660       660
+Patrimonio .............................  810       705
+Total de pasivos y patrimonio ..........  1,470     1,365
