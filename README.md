@@ -6,6 +6,8 @@ Proyecto académico de gestión financiera con HTML, CSS y JavaScript. Todo el c
 
 Ejecuta `node preview.cjs` y visita http://127.0.0.1:4173. Ejecuta `node finance.test.cjs` para comprobar el motor. Las fuentes y Chart.js 4.5.1 requieren conexión inicial; las tablas y los cálculos funcionan sin la librería gráfica. Para guardar casos utiliza HTTP/HTTPS: localStorage en archivos abiertos directamente depende del navegador.
 
+El sitio se publica desde la raíz del repositorio: en GitHub Pages, usa `main` y `/(root)`. La página principal es `index.html` y carga sus recursos desde `dist/`, sin incluir esa carpeta en la dirección de la página. Los enlaces antiguos a `dist/index.html` redirigen a la raíz conservando los parámetros y la sección seleccionada.
+
 ## Módulos
 
 - **Estados:** balance conciliado y estado de resultados centralizados, con uno o dos ejercicios consecutivos. Los datos opcionales faltantes permanecen sin informar; cero es un valor explícito. El balance se registra **por cuentas**: tantas o tan pocas como traiga el ejercicio (hasta 80). Se escribe o se elige el nombre de la cuenta en un catálogo estándar (40 cuentas del balance y 20 del estado de resultados, reconocidas sin importar mayúsculas ni tildes): al elegirlo, la clasificación, el rol y el tratamiento se asignan solos, y una etiqueta bajo el nombre los resume y permite cambiarlos. Un nombre propio pide elegir la clasificación, y una cuenta sin clasificar y en blanco se ignora. Cada cuenta declara su clasificación (activo, pasivo o patrimonio; corriente o no corriente), un rol opcional para las razones (efectivo, cuentas por cobrar, inventarios, activos fijos netos, cuentas por pagar, deuda a largo plazo) y su tratamiento: **suma**, **resta** (depreciación acumulada, acciones en tesorería) o **de los cuales** (dato ya incluido en un total que se escribió, útil cuando el ejercicio solo da subtotales). Varias cuentas con el mismo rol se suman; lo que ninguna cuenta con rol explica queda en «otros». Una cuenta en blanco no se toma en cuenta, y una razón que necesita un rol no informado queda sin calcular con su motivo. El balance debe cuadrar. Si el ejercicio solo da algunas partes (por ejemplo, activo corriente, pasivo corriente e inventarios para un problema de liquidez), activa **Balance parcial** y marca qué partes escribiste completas (activos corrientes, activos no corrientes, pasivos corrientes, pasivos no corrientes, patrimonio). Entonces no se exige que cuadre y cada razón se calcula solo si todas las partes que usa están marcadas; si no, queda sin calcular y dice cuáles faltan. Los datos de una parte no marcada se ignoran, y ninguna razón parcial puede diferir de la del balance completo. El escenario integrado requiere un balance completo. Con las cinco partes marcadas el balance vuelve a exigir cuadre.
@@ -64,7 +66,8 @@ La suite incluye la regresión original de Du Pont y escenarios, más pruebas de
 - `dist/finance.js`: motor puro, sin DOM ni almacenamiento; API FinancialEngine/Finance y CommonJS.
 - `dist/app.js`: estado central, formularios, eventos, casos y migración.
 - `dist/advanced.js`: presentación, semáforos, gráficos y reporte.
-- `dist/index.html`: estructura de navegación y módulos.
+- `index.html`: página principal, estructura de navegación y módulos.
+- `dist/index.html`: redirección de enlaces antiguos a la página principal.
 - `dist/styles.css`, `dist/advanced.css`: diseño adaptable e impresión.
 - `finance.test.cjs`: pruebas del motor y referencias pendientes.
 

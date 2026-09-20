@@ -1,10 +1,11 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const root = path.join(__dirname, 'dist');
+const root = __dirname;
 http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
-  const file = path.join(root, pathname === '/' ? 'index.html' : pathname);
+  if (pathname.split('/').some(part => part.startsWith('.'))) { res.writeHead(403).end(); return; }
+  const file = path.join(root, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (error, data) => {
     if (error) { res.writeHead(404).end('Not found'); return; }
