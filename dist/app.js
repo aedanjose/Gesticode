@@ -128,7 +128,7 @@ const advRowHTML=(kind,a,i,cols)=>'<tr class="acct-adv" data-kind="'+kind+'" dat
 const allowsNegative=(kind,a)=>kind==='balance'?a.section==='equity':a.category==='taxes';
 function rowHTML(kind,a,i,sides){
  const k=rowKinds[kind],name=a.name||'Cuenta '+(i+1);
- const amounts=sides.map(s=>'<td>'+input(k.path+'.'+i+'.amounts.'+s,name+' · '+(s==='current'?state.year:state.year-1),{negative:allowsNegative(kind,a),integer:kind==='income'&&a.category==='shares',optional:true}).replace('<label class="field">','<label class="field compact-field">')+'</td>').join('');
+ const amounts=sides.map(s=>'<td data-label="'+(s==='current'?'T2 · '+state.year:'T1 · '+(state.year-1))+'">'+input(k.path+'.'+i+'.amounts.'+s,name+' · '+(s==='current'?state.year:state.year-1),{negative:allowsNegative(kind,a),integer:kind==='income'&&a.category==='shares',optional:true}).replace('<label class="field">','<label class="field compact-field">')+'</td>').join('');
  return '<tr class="acct-row" data-kind="'+kind+'" data-row="'+i+'"><td class="acct-main"><input class="acct-name" type="text" list="'+k.catalog+'" data-'+k.attr+'="'+i+'" data-field="name" maxlength="80" value="'+esc(a.name)+'" placeholder="Nombre: elige uno de la lista o escribe el tuyo" aria-label="Nombre de la cuenta '+(i+1)+'" autocomplete="off">'+chipHTML(kind,a,i)+'</td>'+amounts+'<td><button type="button" class="icon-button" '+k.remove+'="'+i+'" aria-label="Quitar '+esc(name)+'">✕</button></td></tr>'
   +(isOpen(kind,a)?advRowHTML(kind,a,i,sides.length+2):'');
 }

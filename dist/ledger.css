@@ -249,3 +249,37 @@ footer strong{font-family:var(--slab);font-size:14px;color:var(--ink)}
   main{background:none!important;box-shadow:none!important;padding:0!important;margin:0!important;min-height:0!important;max-width:none!important}
   .report-document{box-shadow:none!important;background:#fff!important}
 }
+
+/* ── Configuración de períodos: las columnas se adaptan y los campos nunca empujan el ancho de la página ── */
+.settings-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.settings-grid>label{min-width:0}
+.settings-grid select,.settings-grid input:not([type=checkbox]){width:100%;max-width:100%;min-width:0;text-overflow:ellipsis}
+.settings-grid label.check{align-self:end;display:flex;gap:10px;align-items:flex-start;text-transform:none;letter-spacing:0;font:500 13px var(--sans,'IBM Plex Sans',system-ui,sans-serif)}
+.settings-grid label.check input{width:auto;margin-top:2px;flex:none}
+.chart-wrap{min-width:0}
+.chart-wrap canvas{max-width:100%}
+
+/* ── Móvil: las cuentas se registran en tarjetas (nombre arriba, importes debajo) en vez de una tabla ancha ── */
+@media(max-width:760px){
+  .settings-grid input[type=number]{text-align:left}
+  .account-table{min-width:0!important;width:100%}
+  .account-table,.account-table tbody{display:block}
+  .account-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .account-table tr{display:block}
+  .account-table tr.acct-row{width:100%;display:grid;grid-template-columns:1fr 1fr 44px;gap:8px 10px;padding:12px 2px;border-bottom:1px solid var(--line)}
+  .account-table tr.acct-row>td{display:block;min-width:0!important;padding:0;border:0}
+  .account-table tr.acct-row>td.acct-main{grid-column:1/-1}
+  .account-table tr.acct-row>td:last-child{grid-column:3;grid-row:2;align-self:end;justify-self:end}
+  .account-table tr.acct-row>td[data-label]::before{content:attr(data-label);display:block;margin-bottom:3px;font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .account-table .icon-button{min-width:44px;min-height:44px}
+  .account-table .grp-head td{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+  .account-table tr.grp-total>td:first-child,.account-table tr.grp-sum>td:first-child{text-align:left}
+  .account-table tr.grp-total,.account-table tr.grp-sum{display:flex;align-items:baseline;gap:10px;padding:2px 0}
+  .account-table tr.grp-total>td,.account-table tr.grp-sum>td{display:block;border:0;padding:8px 4px;min-width:0!important;width:auto}
+  .account-table tr.grp-total>td:first-child,.account-table tr.grp-sum>td:first-child{flex:1}
+  .account-table tr.grp-total>td:empty,.account-table tr.grp-sum>td:empty{display:none}
+  .account-table td[data-total][data-side]::before{content:attr(data-side);display:block;font:600 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right}
+  .account-table td[data-total][data-side=previous]::before{content:'T1'}
+  .account-table td[data-total][data-side=current]::before{content:'T2'}
+  .account-table tr.acct-adv,.account-table tr.acct-adv>td{display:block}
+}
